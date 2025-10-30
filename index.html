@@ -3,8 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Propuesta Mascota FIIA</title>
+    <title>Propuesta Mascota Sonic - UNASAM FIIA</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- LIBRERÍAS DE FIREBASE (Para persistencia de datos) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, deleteDoc, onSnapshot, collection, query, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Exponemos las funciones de Firebase al ámbito global para poder usarlas en el script principal
+        window.firebase = { 
+            initializeApp, 
+            getAuth, 
+            signInAnonymously, 
+            signInWithCustomToken, 
+            getFirestore, 
+            doc, 
+            deleteDoc, 
+            onSnapshot, 
+            collection, 
+            query, 
+            addDoc,
+            serverTimestamp
+        };
+    </script>
     
     <!-- LIBRERÍAS DE EXPORTACIÓN (Para PDF y Excel) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -28,8 +51,6 @@
     </script>
 
     <script>
-        // --- CÓDIGO CLÁSICO (SOLO UI y DATA HOLDER) ---
-
         // FUNCIONES DE UTILIDAD (SVG ICONS)
         const Icons = {
             // Icono de la UNASAM (Escudo)
@@ -50,132 +71,254 @@
             Clipboard: (classes = "w-6 h-6") => `<svg class="${classes}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M17 17h.01"/></svg>`,
             Pen: (classes = "w-6 h-6") => `<svg class="${classes}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>`,
             Check: (classes = "w-6 h-6") => `<svg class="${classes}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>`,
-            Download: (classes = "w-6 h-6") => `<svg class="${classes}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>`,
         };
 
 
         const app = {
             signatures: [],
+            db: null,
+            auth: null,
+            signaturesRef: null,
+            unsubscribe: null,
+            userId: null,
             isFirebaseReady: false,
-            isLoading: true, // Estado de carga inicial (MANDATORIO)
+            isLoading: true, // Estado de carga inicial
+            currentEntry: { codigo: '', nombre: '', escuela: 'Ingeniería Industrial', ciclo: '' },
             activeTab: 'propuesta',
             showDocument: null,
 
-            // REFERENCIAS INTERNAS (Definidas por el módulo, aquí solo placeholders)
-            // La versión final de estas funciones será asignada por el script de módulo.
-            add: function() { 
-                if (!this.isFirebaseReady) {
-                    this.showStatus('add-status', 'Base de datos no conectada. No se puede registrar la firma.', 'red');
-                }
-            },
-            deleteSig: function(id) { 
-                if (!this.isFirebaseReady) {
-                    this.showStatus('add-status', 'Base de datos no conectada. No se puede eliminar la firma.', 'red');
-                }
-            },
+            async init() { 
+                // 1. FIREBASE SETUP
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
 
-            // Función de utilidad para mostrar mensajes
-            showStatus(elementId, message, color) {
-                const statusDiv = document.getElementById(elementId);
-                if (statusDiv) {
-                    const icon = color === 'red' ? '❌' : Icons.Check("w-5 h-5 mr-1");
-                    const colorClass = color === 'red' ? 'text-red-600' : 'text-green-600';
-                    statusDiv.innerHTML = `<span class="${colorClass} font-semibold flex items-center">${icon} ${message}</span>`;
-                    setTimeout(() => { statusDiv.innerHTML = ''; }, color === 'red' ? 5000 : 3000);
-                }
-            },
+                if (Object.keys(firebaseConfig).length === 0 || typeof window.firebase === 'undefined') {
+                     console.error("Firebase config or SDK not available. Running in local mode (no persistence).");
+                     this.isFirebaseReady = false;
+                     this.isLoading = false;
+                } else {
+                    const appInstance = firebase.initializeApp(firebaseConfig);
+                    this.db = firebase.getFirestore(appInstance);
+                    this.auth = firebase.getAuth(appInstance);
+                    this.isFirebaseReady = true;
 
-            // FUNCIÓN LLAMADA POR EL MÓDULO PARA ACTUALIZAR DATOS
-            loadDataAndRender(signaturesArray, isReady) {
-                this.signatures = signaturesArray;
-                this.isFirebaseReady = isReady;
-                this.isLoading = false; 
+                    try {
+                        // Autenticación: con token si está disponible, sino anónima.
+                        if (typeof __initial_auth_token !== 'undefined') {
+                            await firebase.signInWithCustomToken(this.auth, __initial_auth_token);
+                        } else {
+                            await firebase.signInAnonymously(this.auth);
+                        }
+                        this.userId = this.auth.currentUser?.uid || crypto.randomUUID();
+                        
+                        // Ruta pública para la colección de firmas
+                        this.signaturesRef = firebase.collection(this.db, `artifacts/${appId}/public/data/signatures`);
+                        
+                        // 2. LISTENER EN TIEMPO REAL (onSnapshot)
+                        this.unsubscribe = firebase.onSnapshot(firebase.query(this.signaturesRef), (snapshot) => {
+                            const signaturesArray = [];
+                            snapshot.forEach((doc) => {
+                                const data = doc.data();
+                                // Se añade 'id' de Firestore, y se usa la marca de tiempo para ordenar después
+                                signaturesArray.push({
+                                    id: doc.id,
+                                    codigo: data.codigo || 'N/A',
+                                    nombre: data.nombre || 'N/A',
+                                    escuela: data.escuela || 'N/A',
+                                    ciclo: data.ciclo || 'N/A',
+                                    timestamp: data.timestamp ? data.timestamp.toDate() : new Date(0) 
+                                });
+                            });
+                            // Ordenar las firmas por fecha (de la más antigua a la más reciente)
+                            signaturesArray.sort((a, b) => a.timestamp - b.timestamp);
+                            
+                            this.signatures = signaturesArray;
+                            this.isLoading = false;
+                            this.render();
+                        }, (error) => {
+                            console.error("Error al obtener firmas de Firestore:", error);
+                            this.isLoading = false;
+                            this.render();
+                        });
+
+                    } catch (error) {
+                        console.error("Error de Firebase Auth o Init:", error);
+                        this.isLoading = false;
+                    }
+                }
+                
+                // Render inicial para mostrar el estado de carga
                 this.render();
             },
 
             switchTab(tab) { this.activeTab = tab; this.render(); },
-            showDoc(doc) { 
-                if (doc === 'firmas') {
-                    this.switchTab('firmas');
-                    this.showDocument = null; 
-                } else {
-                    this.showDocument = doc; 
-                    this.render(); 
-                }
-            },
+            showDoc(doc) { this.showDocument = doc; this.render(); },
             closeDoc() { this.showDocument = null; this.render(); },
 
-            // FUNCIÓN DE CONTENIDO DE LA PROPUESTA (COMPLETO)
+            async add() {
+                const codigo = document.getElementById('codigo').value.trim();
+                const nombre = document.getElementById('nombre').value.trim();
+                const escuela = document.getElementById('escuela').value;
+                const ciclo = document.getElementById('ciclo').value.trim();
+                
+                if (codigo && nombre && ciclo) {
+                    if (this.isFirebaseReady) {
+                        try {
+                            // Usar addDoc para guardar en Firestore
+                            await firebase.addDoc(this.signaturesRef, {
+                                codigo,
+                                nombre,
+                                escuela,
+                                ciclo,
+                                timestamp: firebase.serverTimestamp() // Marca de tiempo del servidor
+                            });
+                            // onSnapshot se encarga de actualizar this.signatures y this.render()
+                        } catch (e) {
+                            console.error("Error al añadir documento: ", e);
+                        }
+                    } else {
+                        // Modo sin persistencia (solo para desarrollo local sin Firebase)
+                        this.signatures.push({ id: Date.now(), codigo, nombre, escuela, ciclo, timestamp: new Date() });
+                        this.render();
+                    }
+                    
+                    // Limpiar campos de entrada
+                    document.getElementById('codigo').value = '';
+                    document.getElementById('nombre').value = '';
+                    document.getElementById('ciclo').value = '';
+                } else {
+                    // Reemplazo de alert()
+                    console.error("Faltan datos para registrar la firma.");
+                }
+            },
+
+            async deleteSig(id) { 
+                if (this.isFirebaseReady) {
+                    try {
+                        const docRef = firebase.doc(this.db, `artifacts/${__app_id}/public/data/signatures`, id);
+                        await firebase.deleteDoc(docRef);
+                        // onSnapshot se encarga de actualizar this.signatures y this.render()
+                    } catch (e) {
+                        console.error("Error al eliminar documento: ", e);
+                    }
+                } else {
+                    // Modo local
+                    this.signatures = this.signatures.filter(s => s.id !== id); 
+                    this.render();
+                }
+            },
+
             getProposal() {
                 const fecha = new Date().toLocaleDateString('es-PE', { year: 'numeric', month: 'long', day: 'numeric' });
                 return `PROPUESTA DE INCORPORACIÓN DE MASCOTA COMPLEMENTARIA
 ESCUELA PROFESIONAL DE INGENIERÍA INDUSTRIAL
-FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS (FIIA)
-UNIVERSIDAD NACIONAL SANTIAGO ANTÚNEZ DE MAYOLO (UNASAM)
+
+UNIVERSIDAD NACIONAL SANTIAGO ANTÚNEZ DE MAYOLO - UNASAM
+FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS
 
 Huaraz, ${fecha}
 
-SEÑOR
+SEÑOR:
+_________________________________
 DECANO DE LA FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS
-PRESENTE.-
 
-ASUNTO: Solicitud de incorporación de la mascota "Sonic" como representante oficial de la Escuela Profesional de Ingeniería Industrial, de manera complementaria a la mascota actual (Garfield).
+ASUNTO: Propuesta de incorporación de mascota "Sonic" como símbolo complementario de la Escuela Profesional de Ingeniería Industrial
 
-Estimado Señor Decano,
+De nuestra consideración:
 
-Nos dirigimos a usted, los estudiantes de la Escuela Profesional de Ingeniería Industrial, con el debido respeto para presentar formalmente esta solicitud.
+Por medio de la presente, los estudiantes de la Escuela Profesional de Ingeniería Industrial nos dirigimos a usted con el debido respeto para exponer lo siguiente:
 
-1. ANTECEDENTES
-Actualmente, nuestra facultad, FIIA, utiliza al personaje "Garfield" como su mascota representativa. Reconocemos y respetamos esta tradición que abarca a ambas escuelas. Sin embargo, en el contexto actual y las necesidades específicas de identidad de la carrera de Ingeniería Industrial, se hace necesario un símbolo complementario.
+I. ANTECEDENTES
 
-2. FUNDAMENTACIÓN DE LA PROPUESTA
-La Escuela Profesional de Ingeniería Industrial requiere una mascota que, si bien coexista con Garfield, posea características que representen los valores fundamentales de nuestra disciplina, tales como:
-    a) Velocidad y Eficiencia: Sonic el Erizo es mundialmente conocido por su velocidad. En Ingeniería Industrial, la velocidad y la optimización de procesos (lograr más en menos tiempo) son principios esenciales.
-    b) Determinación y Enfoque: Sonic es un personaje que siempre persigue sus objetivos con firmeza, simbolizando la planificación y la gestión efectiva de proyectos.
-    c) Imagen Moderna y Global: La Ingeniería Industrial es una carrera moderna y universal. Sonic ofrece una imagen contemporánea que se alinea con la innovación tecnológica y la globalización.
+1.1. La Facultad de Ingeniería de Industrias Alimentarias (FIIA) cuenta con la mascota "Garfield" como símbolo representativo de toda la facultad, misma que ha generado identidad y cohesión entre ambas escuelas profesionales.
 
-3. EL ROL COMPLEMENTARIO DE SONIC
-Proponemos que Sonic no reemplace a Garfield, sino que se incorpore como la mascota oficial de la Escuela Profesional de Ingeniería Industrial. Esto permitirá a FIIA mantener a Garfield (cubriendo a ambas escuelas) y a Ingeniería Industrial contar con Sonic, reforzando la identidad específica sin dividir a la facultad.
+1.2. La Escuela Profesional de Ingeniería Industrial, consciente de su crecimiento académico y estudiantil, busca fortalecer su identidad particular sin menoscabar la unidad facultativa existente.
 
-4. CONSIDERACIONES FINALES
-Agradecemos su tiempo y su consideración a esta propuesta que busca enriquecer la identidad estudiantil y fomentar el sentido de pertenencia a través de un símbolo que resuene con los principios de nuestra carrera profesional. Adjuntamos a esta solicitud un registro de firmas de respaldo de la comunidad estudiantil.
+1.3. En otras facultades de la UNASAM y universidades nacionales, coexisten mascotas complementarias que representan a diferentes escuelas profesionales sin generar división, sino enriquecimiento cultural e identitario.
+
+II. JUSTIFICACIÓN
+
+2.1. FORTALECIMIENTO DE IDENTIDAD PROPIA
+La mascota "Sonic" representa valores inherentes a la Ingeniería Industrial: velocidad en procesos, innovación tecnológica, dinamismo y eficiencia. Estos atributos resuenan con el perfil del ingeniero industrial moderno.
+
+2.2. UNIDAD EN LA DIVERSIDAD
+La incorporación de Sonic NO busca reemplazar a Garfield ni generar separación. Al contrario, el concepto es que ambas mascotas sean "amigas" y convivan, reflejando la colaboración entre ambas escuelas profesionales dentro de una misma facultad fuerte y unida.
+
+2.3. MAYOR PARTICIPACIÓN ESTUDIANTIL
+Una mascota propia incrementará el sentido de pertenencia de los estudiantes de Ingeniería Industrial, motivando mayor participación en eventos académicos, culturales y deportivos tanto internos como interfacultativos.
+
+2.4. PROYECCIÓN Y CRECIMIENTO
+Como facultad que aspira al crecimiento y reconocimiento institucional, la diversificación de símbolos identitarios contribuye al posicionamiento de nuestras escuelas profesionales, atrayendo a futuros estudiantes.
+
+III. OBJETIVOS
+
+3.1. Incorporar a "Sonic" como mascota oficial de la Escuela Profesional de Ingeniería Industrial.
+3.2. Mantener a "Garfield" como mascota representativa de toda la FIIA.
+3.3. Promover actividades conjuntas donde ambas mascotas simbolicen la unidad facultativa.
+3.4. Fortalecer la identidad estudiantil sin fragmentar la cohesión interfacultativa.
+
+IV. RESPALDO ESTUDIANTIL
+
+4.1. La presente propuesta cuenta con el respaldo documentado de estudiantes de AMBAS escuelas profesionales (Ingeniería Industrial e Ingeniería en Industrias Alimentarias), conforme a las firmas anexas.
+
+4.2. Este apoyo transversal demuestra que la iniciativa es percibida como integradora y no divisoria por la comunidad estudiantil de la FIIA.
+
+V. COMPROMISO
+
+Los estudiantes de Ingeniería Industrial nos comprometemos a:
+- Financiar la elaboración de la botarga de Sonic con recursos propios.
+- Promover actividades donde ambas mascotas interactúen positivamente.
+- Respetar y mantener a Garfield como símbolo facultativo principal.
+- Contribuir al prestigio y unidad de la FIIA.
+
+VI. SOLICITUD
+
+Por lo expuesto, solicitamos respetuosamente se apruebe la incorporación de "Sonic" como mascota complementaria de la Escuela Profesional de Ingeniería Industrial, bajo los principios de unidad, respeto y crecimiento institucional aquí descritos.
+
+Sin otro particular, quedamos de usted.
 
 Atentamente,
 
-Comité de Estudiantes Promotores de la Mascota Sonic
-(Ver Anexo: Registro de firmas de respaldo estudiantil)`;
+_______________________________
+ESTUDIANTES DE LA ESCUELA PROFESIONAL DE INGENIERÍA INDUSTRIAL
+FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM
+
+Anexo: Registro de firmas de respaldo estudiantil`;
             },
 
-            // FUNCIÓN DE CONTENIDO INFORMATIVO (CONTENIDO CORREGIDO Y PULIDO)
             getInfo() {
-                return `DOCUMENTO INFORMATIVO: JUSTIFICACIÓN DE LA MASCOTA SONIC
+                return `¿POR QUÉ SONIC COMO MASCOTA DE INGENIERÍA INDUSTRIAL?
 
-¡Únete al Movimiento!
+Estimado(a) estudiante de la FIIA:
 
-La Escuela Profesional de Ingeniería Industrial busca una identidad que refleje la modernidad, eficiencia y dinamismo de nuestra carrera. Por eso, proponemos a Sonic el Erizo como nuestra mascota complementaria, coexistiendo con Garfield a nivel de facultad (FIIA).
+Te invitamos a conocer y apoyar esta iniciativa que busca FORTALECER nuestra facultad, NO dividirla.
 
-VALORES DE INGENIERÍA INDUSTRIAL REFLEJADOS EN SONIC:
+🔵 ¿QUÉ PROPONEMOS?
+Incorporar a SONIC como mascota de la Escuela Profesional de Ingeniería Industrial, siendo el "amigo" de Garfield, nuestra mascota facultativa.
 
-1. VELOCIDAD (OPTIMIZACIÓN)
-   - Principio Industrial: Maximizar la eficiencia, reducir tiempos y optimizar procesos de producción.
-   - Símbolo de Sonic: Conocido como el erizo más rápido, encarna la búsqueda constante de la máxima productividad en el menor tiempo.
+🤝 ¿SIGNIFICA SEPARARNOS?
+¡NO! Garfield seguirá siendo la mascota de TODA la FIIA. Sonic será un símbolo ADICIONAL para Industrial, conviviendo ambos en armonía.
 
-2. ANILLOS (GESTIÓN DE RECURSOS)
-   - Principio Industrial: Gestionar, proteger y maximizar el uso de recursos (materiales, financieros, humanos) en cualquier sistema productivo.
-   - Símbolo de Sonic: Los 'Rings' representan la riqueza y los recursos que deben ser recolectados y protegidos del desperdicio.
+⚡ ¿POR QUÉ SONIC?
+✓ Representa velocidad → Eficiencia en procesos industriales
+✓ Representa innovación → Tecnología e ingeniería moderna
+✓ Representa dinamismo → El perfil del ingeniero industrial
+✓ Es reconocible y genera identificación estudiantil
 
-3. DERROTAR A EGGMAN (SOLUCIÓN DE PROBLEMAS)
-   - Principio Industrial: Identificar cuellos de botella y amenazas sistémicas (riesgos, fallas) y aplicar la mejor estrategia para neutralizarlas.
-   - Símbolo de Sonic: Siempre encuentra la mejor ruta y la solución más efectiva para vencer al Dr. Eggman y restaurar el orden.
+🎯 BENEFICIOS PARA LA FIIA COMPLETA:
+• Mayor participación en eventos académicos y deportivos
+• Fortalecimiento de identidad sin fragmentación
+• Actividades conjuntas entre ambas escuelas (Sonic + Garfield)
+• Atracción de nuevos estudiantes a nuestra facultad
+• Proyección institucional de la FIIA
 
-4. COLOR AZUL (LIDERAZGO Y CONFIANZA)
-   - Principio Industrial: El liderazgo ético y la toma de decisiones basada en datos.
-   - Símbolo de Sonic: El azul se asocia con la inteligencia, la confianza y la seriedad, valores clave para el liderazgo organizacional.
+📋 ¿CÓMO PUEDES APOYAR?
+Firma en el registro estudiantil. Tu apoyo es importante sea que estudies Ingeniería Industrial o Ingeniería en Industrias Alimentarias.
 
-CONCLUSIÓN:
-La propuesta de Sonic permite a FIIA mantener a Garfield (Ingeniería de Industrias Alimentarias) y a Ingeniería Industrial contar con un símbolo propio, reforzando la identidad de la carrera dentro de la unidad de la facultad.
+Esta propuesta fue presentada al señor Decano, quien aceptó siempre que cuente con respaldo estudiantil documentado. ¡Tu firma cuenta!
 
-💙 ¡APOYA LA PROPUESTA FIRMANDO EN LA PESTAÑA 'REGISTRO DE FIRMAS'!
+💙 JUNTOS SOMOS MÁS FUERTES
+Sonic + Garfield = Una FIIA unida y con identidades claras
 
 ---
 ESCUELA PROFESIONAL DE INGENIERÍA INDUSTRIAL
@@ -184,6 +327,12 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
             
             // Función de descarga principal (para documentos TXT)
             download(type, format) {
+                if (type === 'firmas') {
+                    // Las firmas se manejan en downloadSignatures, esta función ya no las necesita
+                    return;
+                }
+                
+                // Lógica de descarga de documentos (Propuesta/Info)
                 let content = type === 'propuesta' ? this.getProposal() : this.getInfo();
                 let filename = type === 'propuesta' ? 'Propuesta_Formal_FIIA' : 'Material_Informativo_FIIA';
 
@@ -195,46 +344,39 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                     a.download = filename + '.txt';
                     a.click();
                 }
+                // Los documentos complejos (Propuesta/Info) no se exportan fácilmente a PDF/Excel sin plantillas
             },
 
-            // FUNCIÓN ESPECIALIZADA para descargar firmas en múltiples formatos
+            // NUEVA FUNCIÓN ESPECIALIZADA para descargar firmas en múltiples formatos
             downloadSignatures(format) {
-                if (this.signatures.length === 0) {
-                     document.getElementById('error-message-box').innerHTML = `
-                        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative shadow-md" role="alert">
-                            <span class="block sm:inline">No hay firmas registradas para descargar.</span>
-                        </div>`;
-                     setTimeout(() => document.getElementById('error-message-box').innerHTML = '', 4000);
-                     return;
-                }
-
                 const wsData = [
-                    ['N°', 'CÓDIGO', 'APELLIDOS Y NOMBRES', 'ESCUELA PROFESIONAL', 'CICLO', 'FECHA REGISTRO'],
-                    ...this.signatures.map((s, i) => [
-                        i + 1, 
-                        s.codigo, 
-                        s.nombre, 
-                        s.escuela, 
-                        s.ciclo, 
-                        s.timestamp.toLocaleString('es-PE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                    ])
+                    ['N°', 'CÓDIGO', 'APELLIDOS Y NOMBRES', 'ESCUELA PROFESIONAL', 'CICLO', 'ID Digital (Para control interno)'],
+                    ...this.signatures.map((s, i) => [i + 1, s.codigo, s.nombre, s.escuela, s.ciclo, s.id])
                 ];
                 
-                const filenameBase = "Registro_Firmas_Sonic_FIIA";
+                const filenameBase = "Firmas_Sonic_FIIA";
 
-                if (format === 'xlsx') {
+                if (format === 'xlsx' || format === 'csv') {
+                    // 1. EXCEL/XLSX/CSV DOWNLOAD
                     const ws = XLSX.utils.aoa_to_sheet(wsData);
                     const wb = XLSX.utils.book_new();
                     XLSX.utils.book_append_sheet(wb, ws, "Registro_Firmas");
-                    XLSX.writeFile(wb, filenameBase + ".xlsx");
+                    
+                    if (format === 'csv') {
+                        XLSX.writeFile(wb, filenameBase + ".csv");
+                    } else { // XLSX
+                        XLSX.writeFile(wb, filenameBase + ".xlsx");
+                    }
                 } else if (format === 'pdf') {
+                    // 2. PDF DOWNLOAD (Usando jspdf y autotable)
                     const { jsPDF } = window.jspdf;
                     const doc = new jsPDF('p', 'pt', 'a4');
-                    const headers = [wsData[0]]; 
-                    const body = wsData.slice(1); 
+                    // Usar solo las primeras 5 columnas para la presentación en PDF
+                    const headers = [wsData[0].slice(0, 5)]; 
+                    const body = wsData.slice(1).map(row => row.slice(0, 5)); 
                     
                     doc.setFontSize(18);
-                    doc.setTextColor(30, 64, 175); 
+                    doc.setTextColor(30, 64, 175); // Azul UNASAM
                     doc.text("Registro de Firmas - Propuesta Mascota Sonic FIIA", 40, 50);
 
                     doc.autoTable({
@@ -247,7 +389,14 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                     });
 
                     doc.save(filenameBase + ".pdf");
-                } 
+                } else if (format === 'txt') {
+                    // 3. TEXTO TXT
+                    const content = wsData.map(r => r.join('\t')).join('\n');
+                    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = filenameBase + '.txt'; a.click();
+                }
             },
 
             stats() {
@@ -261,9 +410,6 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
             render() {
                 const stats = this.stats();
                 document.getElementById('app').innerHTML = `
-                    <!-- Mensaje de Error (Reemplazo de alert()) -->
-                    <div id="error-message-box" class="fixed top-4 right-4 z-50 w-full max-w-sm"></div>
-
                     <div class="bg-gradient-to-r from-unasam-blue via-blue-800 to-blue-900 text-white shadow-2xl">
                         <div class="max-w-7xl mx-auto px-6 py-8">
                             <div class="flex items-start justify-between flex-wrap gap-4">
@@ -307,15 +453,13 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                         
                         <!-- CONTENIDO DE LA APLICACIÓN -->
                         ${this.isLoading ? `
-                            <!-- Indicador de Carga Mejorado (Sincronización en curso) -->
                             <div class="text-center py-20 text-blue-600 bg-white rounded-xl shadow-lg p-10">
                                 <svg class="animate-spin h-10 w-10 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
-                                <p class="font-bold text-xl text-blue-800">Sincronizando Firmas Compartidas...</p>
-                                <p class="text-sm text-gray-600 mt-2">Estamos conectando con la base de datos Firestore para descargar todos los registros persistentes.</p>
-                                ${!this.isFirebaseReady ? '<p class="text-xs mt-4 text-red-500 font-semibold">ADVERTENCIA: Fallo en la conexión de la base de datos compartida.</p>' : ''}
+                                <p class="font-semibold text-lg">Cargando datos de firmas persistentes...</p>
+                                <p class="text-sm text-gray-500 mt-2">Asegúrate de tener conexión a Internet para la base de datos.</p>
                             </div>
                         ` : 
                         this.activeTab === 'propuesta' ? `
@@ -339,7 +483,7 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                                         <div class="text-center">
                                             <div class="text-4xl md:text-5xl mb-3">✍️</div>
                                             <h3 class="font-bold text-lg md:text-xl mb-1">Hoja de Firmas</h3>
-                                            <p class="text-sm text-gray-600">(${stats.total} firmas compartidas)</p>
+                                            <p class="text-sm text-gray-600">${stats.total} firmas registradas (¡Persistentes!)</p>
                                         </div>
                                     </button>
                                 </div>
@@ -352,6 +496,7 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                                                 <h3 class="font-bold text-xl md:text-2xl text-blue-800">
                                                     ${this.showDocument==='propuesta'?'📄 Propuesta Formal':''}
                                                     ${this.showDocument==='info'?'📋 Material Informativo':''}
+                                                    ${this.showDocument==='firmas'?'✍️ Formato de Firmas':''}
                                                 </h3>
                                                 <button onclick="app.closeDoc()" class="text-gray-500 hover:text-gray-700 text-3xl leading-none">&times;</button>
                                             </div>
@@ -360,15 +505,29 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                                                 <div class="bg-gray-50 p-4 md:p-6 rounded-lg border">
                                                     <pre class="whitespace-pre-wrap text-sm font-mono text-gray-700 leading-relaxed">${
                                                         this.showDocument==='propuesta'?this.getProposal():
-                                                        this.showDocument==='info'?this.getInfo(): ''
+                                                        this.showDocument==='info'?this.getInfo():
+                                                        [['N°','CÓDIGO','NOMBRES','ESCUELA','CICLO','FECHA REGISTRO'],...this.signatures.map((s,i)=>[i+1,s.codigo,s.nombre,s.escuela,s.ciclo,s.timestamp.toLocaleDateString('es-PE', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })])].map(r=>r.join('\t')).join('\n')
                                                     }</pre>
                                                 </div>
                                             </div>
 
                                             <div class="p-6 md:p-8 border-t border-gray-200 flex justify-end gap-3 flex-wrap">
-                                                <button onclick="app.download('${this.showDocument}', 'txt')" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold shadow-md flex items-center">
-                                                    ${Icons.Download("w-5 h-5 mr-2")} Descargar Documento (TXT)
-                                                </button>
+                                                ${this.showDocument === 'firmas' ? `
+                                                    <p class="font-semibold text-gray-700 self-center mr-4">Exportar Firmas a:</p>
+                                                    <button onclick="app.downloadSignatures('xlsx')" class="bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition-colors font-semibold shadow-md">
+                                                        📊 Excel (.xlsx)
+                                                    </button>
+                                                    <button onclick="app.downloadSignatures('pdf')" class="bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 transition-colors font-semibold shadow-md">
+                                                        📰 PDF (.pdf)
+                                                    </button>
+                                                    <button onclick="app.downloadSignatures('txt')" class="bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700 transition-colors font-semibold shadow-md">
+                                                        📝 Texto (.txt)
+                                                    </button>
+                                                ` : `
+                                                    <button onclick="app.download('${this.showDocument}', 'txt')" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold shadow-md">
+                                                        💾 Descargar Documento
+                                                    </button>
+                                                `}
                                             </div>
                                         </div>
                                     </div>
@@ -376,23 +535,19 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
 
                                 <div class="bg-blue-50 border-l-4 border-blue-600 p-6 md:p-8 rounded-xl shadow-md">
                                     <h3 class="font-bold text-lg mb-4 text-blue-800 flex items-center">
-                                        ${Icons.Check("w-5 h-5 text-blue-600 mr-2")} Principios de la Propuesta
+                                        ${Icons.Check("w-5 h-5 text-blue-600 mr-2")} Instrucciones de Uso
                                     </h3>
                                     <ul class="space-y-3 text-gray-700">
-                                        <li><strong>1. Persistencia:</strong> Los registros se guardan en la nube (Firestore) y no localmente.</li>
-                                        <li><strong>2. Sincronización:</strong> La lista de firmas se actualiza automáticamente en todos los dispositivos usando el listener \`onSnapshot\`.</li>
-                                        <li><strong>3. Unidad:</strong> La propuesta busca sumar una mascota (Sonic) sin reemplazar a la actual (Garfield), fomentando la colaboración.</li>
+                                        <li><strong>1.</strong> Descarga la Propuesta Formal (TXT) para presentar al Decano.</li>
+                                        <li><strong>2.</strong> Usa el Material Informativo para explicar a estudiantes.</li>
+                                        <li><strong>3.</strong> **¡Control Digital!** Las firmas se guardan automáticamente en la base de datos (pestaña "Registro de Firmas").</li>
+                                        <li><strong>4.</strong> **¡Exporta!** Descarga el registro de firmas en PDF, Excel o TXT para presentar la evidencia.</li>
                                     </ul>
                                 </div>
                             </div>
                         ` : `
                             <!-- PESTAÑA DE REGISTRO DE FIRMAS -->
                             <div class="space-y-8">
-                                <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded mb-6" role="alert">
-                                    <p class="font-bold">✅ Base de Datos Compartida y en Tiempo Real (Firestore)</p>
-                                    <p class="text-sm">Las ${stats.total} firmas se han cargado desde la base de datos **compartida** y son visibles para todos los usuarios. Cada nueva firma se sincroniza automáticamente.</p>
-                                </div>
-                                
                                 <div class="grid md:grid-cols-3 gap-6">
                                     <div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-6 md:p-8 rounded-xl shadow-lg">
                                         <div class="text-4xl md:text-5xl font-bold">${stats.total}</div>
@@ -409,8 +564,8 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                                 </div>
 
                                 <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg border-t-4 border-blue-600">
-                                    <h3 class="font-bold text-xl md:text-2xl mb-4 text-blue-800">1. Agregar Nueva Firma Digital</h3>
-                                    <div class="grid md:grid-cols-5 gap-4 mb-4">
+                                    <h3 class="font-bold text-xl md:text-2xl mb-6 text-blue-800">Agregar Nueva Firma Digital</h3>
+                                    <div class="grid md:grid-cols-5 gap-4 mb-6">
                                         <input type="text" id="codigo" placeholder="Código" class="px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                                         <input type="text" id="nombre" placeholder="Apellidos y Nombres" class="md:col-span-2 px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                                         <select id="escuela" class="px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
@@ -419,23 +574,9 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                                         </select>
                                         <input type="text" id="ciclo" placeholder="Ciclo" class="px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                                     </div>
-                                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                        <!-- ESTE BOTÓN LLAMA A LA FUNCIÓN SOBREESCRITA DEL MÓDULO -->
-                                        <button onclick="app.add()" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-semibold transition-colors w-full md:w-auto shadow-md">
-                                            ➕ Registrar Firma
-                                        </button>
-                                        <div id="add-status" class="h-8 flex items-center text-sm"></div>
-                                    </div>
-                                    
-                                    <h3 class="font-bold text-xl md:text-2xl mt-10 mb-4 text-blue-800">2. Descargar Padrón Oficial</h3>
-                                    <div class="flex flex-wrap gap-4">
-                                        <button onclick="app.downloadSignatures('xlsx')" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors font-semibold shadow-md flex items-center">
-                                            ${Icons.Download("w-5 h-5 mr-2")} Descargar Excel (.xlsx)
-                                        </button>
-                                        <button onclick="app.downloadSignatures('pdf')" class="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors font-semibold shadow-md flex items-center">
-                                            ${Icons.Download("w-5 h-5 mr-2")} Descargar PDF (.pdf)
-                                        </button>
-                                    </div>
+                                    <button onclick="app.add()" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-semibold transition-colors w-full md:w-auto shadow-md">
+                                        ➕ Registrar Firma
+                                    </button>
                                 </div>
 
                                 <div class="bg-white rounded-xl shadow-lg overflow-x-auto">
@@ -455,7 +596,7 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                                             ${this.signatures.length === 0 ? `
                                                 <tr><td colspan="7" class="px-6 py-12 text-center text-gray-500">
                                                     <div class="text-4xl md:text-5xl mb-3">📝</div>
-                                                    <p>No hay firmas registradas aún. ¡Los datos son **persistentes** y **compartidos**!</p>
+                                                    <p>No hay firmas registradas aún. ¡Se guardarán de forma persistente!</p>
                                                     <p class="text-sm mt-1">Agrega la primera firma arriba</p>
                                                 </td></tr>
                                             ` : this.signatures.map((s, i) => `
@@ -467,7 +608,6 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                                                     <td class="px-6 py-4 text-sm">${s.ciclo}</td>
                                                     <td class="px-6 py-4 text-xs text-gray-500">${s.timestamp.toLocaleString('es-PE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                                                     <td class="px-6 py-4">
-                                                        <!-- ESTE BOTÓN LLAMA A LA FUNCIÓN SOBREESCRITA DEL MÓDULO -->
                                                         <button onclick="app.deleteSig('${s.id}')" class="text-red-500 hover:text-red-700 transition-colors" title="Eliminar firma">🗑️</button>
                                                     </td>
                                                 </tr>
@@ -477,135 +617,18 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                                 </div>
                             </div>
                         `}
+
+                        <div class="mt-12 text-center text-gray-600 text-sm pb-8">
+                            <p>© 2024 Universidad Nacional Santiago Antúnez de Mayolo - UNASAM</p>
+                            <p class="mt-1">Facultad de Ingeniería de Industrias Alimentarias</p>
+                            <p class="mt-1 text-xs text-gray-400">Datos persistentes vía Firestore. ID: ${this.userId || 'Cargando...'}</p>
+                        </div>
                     </div>
                 `;
             }
         };
 
-        // Renderiza el estado de carga inicial
-        app.render();
-
-    </script>
-
-    <!-- FIREBASE SETUP - Módulo para la inicialización y el listener -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, collection, query, serverTimestamp, addDoc, deleteDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        let db, signaturesRef;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-        async function initFirebase() {
-            const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-            
-            if (Object.keys(firebaseConfig).length === 0) {
-                console.error("Firebase config not available. Running in local mode (no persistence).");
-                app.loadDataAndRender([], false);
-                return;
-            }
-
-            try {
-                setLogLevel('Debug'); 
-                const appInstance = initializeApp(firebaseConfig);
-                
-                db = getFirestore(appInstance);
-                const auth = getAuth(appInstance);
-                
-                const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-
-                // USO DEL PATH PUBLICO COMPARTIDO: artifacts/{appId}/public/data/signatures
-                signaturesRef = collection(db, `artifacts/${appId}/public/data/signatures`);
-                
-                // 1. SOBREESCRIBIR app.add() con la versión del módulo
-                app.add = handleDbAdd;
-                // 2. SOBREESCRIBIR app.deleteSig() con la versión del módulo
-                app.deleteSig = handleDbDelete;
-
-                // Iniciar listener en tiempo real (onSnapshot)
-                onSnapshot(
-                    query(signaturesRef), 
-                    (snapshot) => {
-                        const signaturesArray = [];
-                        snapshot.forEach((d) => {
-                            const data = d.data();
-                            signaturesArray.push({
-                                id: d.id,
-                                codigo: data.codigo || 'N/A',
-                                nombre: data.nombre || 'N/A',
-                                escuela: data.escuela || 'N/A',
-                                ciclo: data.ciclo || 'N/A',
-                                timestamp: data.timestamp ? data.timestamp.toDate() : new Date(0) 
-                            });
-                        });
-                        
-                        signaturesArray.sort((a, b) => a.timestamp - b.timestamp);
-                        app.loadDataAndRender(signaturesArray, true); // Pasar true para indicar que está listo
-
-                    }, 
-                    (error) => {
-                        console.error("Error al obtener firmas de Firestore:", error);
-                        app.loadDataAndRender([], false);
-                    }
-                );
-
-            } catch (error) {
-                console.error("Error de Firebase Auth o Init:", error);
-                app.loadDataAndRender([], false);
-            }
-        }
-
-        // --- MANEJADORES DE BASE DE DATOS DENTRO DEL MÓDULO (USAN IMPORTS INTERNAMENTE) ---
-
-        async function handleDbAdd() {
-            const codigo = document.getElementById('codigo').value.trim();
-            const nombre = document.getElementById('nombre').value.trim();
-            const escuela = document.getElementById('escuela').value;
-            const ciclo = document.getElementById('ciclo').value.trim();
-            
-            if (codigo && nombre && ciclo) {
-                try {
-                    await addDoc(signaturesRef, {
-                        codigo,
-                        nombre,
-                        escuela,
-                        ciclo,
-                        timestamp: serverTimestamp() 
-                    });
-                    
-                    app.showStatus('add-status', 'Firma registrada exitosamente y COMPARTIDA.', 'green');
-                } catch (e) {
-                    console.error("Error al añadir documento: ", e);
-                    app.showStatus('add-status', `Error al guardar: ${e.message || 'Desconocido'}`, 'red');
-                }
-                
-                // Limpiar campos
-                document.getElementById('codigo').value = '';
-                document.getElementById('nombre').value = '';
-                document.getElementById('ciclo').value = '';
-            } else {
-                app.showStatus('add-status', 'Debe completar todos los campos.', 'red');
-            }
-        }
-
-        async function handleDbDelete(id) { 
-            if (!id || !db) return;
-            try {
-                const docRef = doc(db, `artifacts/${appId}/public/data/signatures`, id);
-                await deleteDoc(docRef);
-                // onSnapshot se encarga de actualizar la UI
-            } catch (e) {
-                console.error("Error al eliminar documento: ", e);
-            }
-        }
-
-        // Inicializa Firebase al cargar el módulo
-        initFirebase();
+        app.init();
     </script>
 </body>
 </html>
