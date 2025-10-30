@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Propuesta Mascota Sonic - UNASAM FIIA</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body class="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
     <div id="app"></div>
@@ -16,26 +19,69 @@
             activeTab: 'propuesta',
             showDocument: null,
 
-            init() { this.render(); },
+            init() { 
+                this.loadSignatures();
+                this.render(); 
+            },
+
+            // Cargar firmas guardadas del navegador
+            loadSignatures() {
+                const saved = localStorage.getItem('sonic_firmas');
+                if (saved) {
+                    this.signatures = JSON.parse(saved);
+                }
+            },
+
+            // Guardar firmas en el navegador
+            saveSignatures() {
+                localStorage.setItem('sonic_firmas', JSON.stringify(this.signatures));
+            },
 
             switchTab(tab) { this.activeTab = tab; this.render(); },
             showDoc(doc) { this.showDocument = doc; this.render(); },
             closeDoc() { this.showDocument = null; this.render(); },
 
             add() {
-                this.currentEntry.codigo = document.getElementById('codigo').value;
-                this.currentEntry.nombre = document.getElementById('nombre').value;
+                this.currentEntry.codigo = document.getElementById('codigo').value.trim();
+                this.currentEntry.nombre = document.getElementById('nombre').value.trim();
                 this.currentEntry.escuela = document.getElementById('escuela').value;
-                this.currentEntry.ciclo = document.getElementById('ciclo').value;
+                this.currentEntry.ciclo = document.getElementById('ciclo').value.trim();
                 
-                if (this.currentEntry.codigo && this.currentEntry.nombre && this.currentEntry.ciclo) {
-                    this.signatures.push({ ...this.currentEntry, id: Date.now() });
-                    this.currentEntry = { codigo: '', nombre: '', escuela: 'Ingeniería Industrial', ciclo: '' };
-                    this.render();
+                if (!this.currentEntry.codigo || !this.currentEntry.nombre || !this.currentEntry.ciclo) {
+                    alert('⚠️ Por favor completa todos los campos');
+                    return;
+                }
+
+                // Validar código duplicado
+                const existe = this.signatures.find(s => s.codigo === this.currentEntry.codigo);
+                if (existe) {
+                    alert('⚠️ Este código ya está registrado: ' + this.currentEntry.codigo);
+                    return;
+                }
+
+                this.signatures.push({ ...this.currentEntry, id: Date.now() });
+                this.saveSignatures();
+                this.currentEntry = { codigo: '', nombre: '', escuela: 'Ingeniería Industrial', ciclo: '' };
+                this.render();
+                alert('✅ Firma agregada correctamente');
+            },
+
+            deleteSig(id) { 
+                if (confirm('¿Estás seguro de eliminar esta firma?')) {
+                    this.signatures = this.signatures.filter(s => s.id !== id); 
+                    this.saveSignatures();
+                    this.render(); 
                 }
             },
 
-            deleteSig(id) { this.signatures = this.signatures.filter(s => s.id !== id); this.render(); },
+            clearAll() {
+                if (confirm('⚠️ ¿Estás seguro de borrar TODAS las firmas? Esta acción no se puede deshacer.')) {
+                    this.signatures = [];
+                    this.saveSignatures();
+                    this.render();
+                    alert('✅ Todas las firmas han sido eliminadas');
+                }
+            },
 
             getProposal() {
                 const fecha = new Date().toLocaleDateString('es-PE', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -154,19 +200,92 @@ ESCUELA PROFESIONAL DE INGENIERÍA INDUSTRIAL
 FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
             },
 
-            download(type, filename) {
+            downloadTxt(type) {
                 let content = '';
-                if (type === 'propuesta') content = this.getProposal();
-                else if (type === 'info') content = this.getInfo();
-                else if (type === 'firmas') {
-                    const rows = [['N°', 'CÓDIGO', 'APELLIDOS Y NOMBRES', 'ESCUELA PROFESIONAL', 'CICLO', 'FIRMA'],
-                        ...this.signatures.map((s, i) => [i+1, s.codigo, s.nombre, s.escuela, s.ciclo, '_______________'])];
-                    content = rows.map(r => r.join('\\t')).join('\\n');
+                let filename = '';
+                if (type === 'propuesta') {
+                    content = this.getProposal();
+                    filename = 'Propuesta_Mascota_Sonic.txt';
+                } else if (type === 'info') {
+                    content = this.getInfo();
+                    filename = 'Info_Propuesta_Sonic.txt';
                 }
                 const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = url; a.download = filename; a.click();
+                a.href = url; 
+                a.download = filename; 
+                a.click();
+            },
+
+            downloadExcel() {
+                const data = [
+                    ['N°', 'CÓDIGO', 'APELLIDOS Y NOMBRES', 'ESCUELA PROFESIONAL', 'CICLO', 'FIRMA'],
+                    ...this.signatures.map((s, i) => [
+                        i + 1, 
+                        s.codigo, 
+                        s.nombre, 
+                        s.escuela, 
+                        s.ciclo, 
+                        '_______________'
+                    ])
+                ];
+
+                const ws = XLSX.utils.aoa_to_sheet(data);
+                
+                // Ajustar ancho de columnas
+                ws['!cols'] = [
+                    {wch: 5},  // N°
+                    {wch: 12}, // CÓDIGO
+                    {wch: 40}, // NOMBRES
+                    {wch: 35}, // ESCUELA
+                    {wch: 8},  // CICLO
+                    {wch: 20}  // FIRMA
+                ];
+
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Firmas");
+                XLSX.writeFile(wb, `Registro_Firmas_Sonic_${new Date().toISOString().split('T')[0]}.xlsx`);
+            },
+
+            downloadPDF() {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('landscape');
+                
+                // Título
+                doc.setFontSize(16);
+                doc.text('REGISTRO DE FIRMAS - PROPUESTA MASCOTA SONIC', 15, 15);
+                doc.setFontSize(10);
+                doc.text('Escuela Profesional de Ingeniería Industrial - FIIA UNASAM', 15, 22);
+                
+                // Tabla
+                const tableData = this.signatures.map((s, i) => [
+                    i + 1,
+                    s.codigo,
+                    s.nombre,
+                    s.escuela,
+                    s.ciclo,
+                    '_______________'
+                ]);
+
+                doc.autoTable({
+                    startY: 28,
+                    head: [['N°', 'CÓDIGO', 'APELLIDOS Y NOMBRES', 'ESCUELA PROFESIONAL', 'CICLO', 'FIRMA']],
+                    body: tableData,
+                    theme: 'grid',
+                    styles: { fontSize: 9, cellPadding: 3 },
+                    headStyles: { fillColor: [37, 99, 235], textColor: 255 },
+                    columnStyles: {
+                        0: { cellWidth: 15 },
+                        1: { cellWidth: 30 },
+                        2: { cellWidth: 70 },
+                        3: { cellWidth: 60 },
+                        4: { cellWidth: 20 },
+                        5: { cellWidth: 40 }
+                    }
+                });
+
+                doc.save(`Registro_Firmas_Sonic_${new Date().toISOString().split('T')[0]}.pdf`);
             },
 
             stats() {
@@ -211,7 +330,7 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                                     📄 Documentos
                                 </button>
                                 <button onclick="app.switchTab('firmas')" class="flex-1 px-6 py-4 font-semibold ${this.activeTab==='firmas'?'bg-blue-600 text-white':'text-gray-600 hover:bg-gray-50'}">
-                                    ✍️ Registro de Firmas
+                                    ✍️ Registro de Firmas (${stats.total})
                                 </button>
                             </div>
                         </div>
@@ -250,10 +369,19 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                                                 ${this.showDocument==='info'?'📋 Material Informativo':''}
                                                 ${this.showDocument==='firmas'?'✍️ Formato de Firmas':''}
                                             </h3>
-                                            <div class="flex gap-3">
-                                                <button onclick="app.download('${this.showDocument}', '${this.showDocument==='propuesta'?'Propuesta_Mascota_Sonic.txt':this.showDocument==='info'?'Info_Propuesta.txt':'Firmas.csv'}')" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">
-                                                    💾 Descargar
-                                                </button>
+                                            <div class="flex gap-3 flex-wrap">
+                                                ${this.showDocument !== 'firmas' ? `
+                                                    <button onclick="app.downloadTxt('${this.showDocument}')" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">
+                                                        💾 Descargar TXT
+                                                    </button>
+                                                ` : `
+                                                    <button onclick="app.downloadExcel()" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700">
+                                                        📊 Excel
+                                                    </button>
+                                                    <button onclick="app.downloadPDF()" class="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700">
+                                                        📄 PDF
+                                                    </button>
+                                                `}
                                                 <button onclick="app.closeDoc()" class="bg-gray-200 px-6 py-3 rounded-lg hover:bg-gray-300">Cerrar</button>
                                             </div>
                                         </div>
@@ -261,7 +389,7 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                                             <pre class="whitespace-pre-wrap text-sm font-mono">${
                                                 this.showDocument==='propuesta'?this.getProposal():
                                                 this.showDocument==='info'?this.getInfo():
-                                                [['N°','CÓDIGO','NOMBRES','ESCUELA','CICLO','FIRMA'],...this.signatures.map((s,i)=>[i+1,s.codigo,s.nombre,s.escuela,s.ciclo,'___'])].map(r=>r.join('\\t')).join('\\n')
+                                                'Vista previa de formato de firmas. Usa los botones Excel o PDF para descargar.'
                                             }</pre>
                                         </div>
                                     </div>
@@ -272,25 +400,25 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                                     <ul class="space-y-2 text-gray-700">
                                         <li><strong>1.</strong> Descarga la Propuesta Formal para presentar al Decano</li>
                                         <li><strong>2.</strong> Usa el Material Informativo para explicar a estudiantes</li>
-                                        <li><strong>3.</strong> Imprime la Hoja de Firmas varias veces (necesitas ~500 firmas)</li>
-                                        <li><strong>4.</strong> Lleva control digital en la pestaña "Registro de Firmas"</li>
+                                        <li><strong>3.</strong> Descarga las firmas en Excel o PDF (formato profesional)</li>
+                                        <li><strong>4.</strong> Las firmas se guardan automáticamente en tu navegador</li>
                                     </ul>
                                 </div>
                             </div>
                         ` : `
                             <div class="space-y-8">
                                 <div class="grid md:grid-cols-3 gap-6">
-                                    <div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-8 rounded-xl">
+                                    <div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-8 rounded-xl shadow-lg">
                                         <div class="text-5xl font-bold">${stats.total}</div>
-                                        <div class="text-lg">Total de Firmas</div>
+                                        <div class="text-lg mt-2">Total de Firmas</div>
                                     </div>
-                                    <div class="bg-gradient-to-br from-green-600 to-green-700 text-white p-8 rounded-xl">
+                                    <div class="bg-gradient-to-br from-green-600 to-green-700 text-white p-8 rounded-xl shadow-lg">
                                         <div class="text-5xl font-bold">${stats.industrial}</div>
-                                        <div class="text-lg">Ing. Industrial</div>
+                                        <div class="text-lg mt-2">Ing. Industrial</div>
                                     </div>
-                                    <div class="bg-gradient-to-br from-purple-600 to-purple-700 text-white p-8 rounded-xl">
+                                    <div class="bg-gradient-to-br from-purple-600 to-purple-700 text-white p-8 rounded-xl shadow-lg">
                                         <div class="text-5xl font-bold">${stats.alimentarias}</div>
-                                        <div class="text-lg">Ing. Alimentarias</div>
+                                        <div class="text-lg mt-2">Ing. Alimentarias</div>
                                     </div>
                                 </div>
 
@@ -305,44 +433,71 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                                         </select>
                                         <input type="text" id="ciclo" placeholder="Ciclo" value="${this.currentEntry.ciclo}" class="px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                                     </div>
-                                    <button onclick="app.add()" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-semibold">
-                                        ➕ Agregar Firma
-                                    </button>
+                                    <div class="flex gap-3 flex-wrap">
+                                        <button onclick="app.add()" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-semibold">
+                                            ➕ Agregar Firma
+                                        </button>
+                                        <button onclick="app.downloadExcel()" class="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 font-semibold">
+                                            📊 Descargar Excel
+                                        </button>
+                                        <button onclick="app.downloadPDF()" class="bg-red-600 text-white px-8 py-3 rounded-lg hover:bg-red-700 font-semibold">
+                                            📄 Descargar PDF
+                                        </button>
+                                        ${stats.total > 0 ? `
+                                        <button onclick="app.clearAll()" class="bg-red-500 text-white px-8 py-3 rounded-lg hover:bg-red-600 font-semibold ml-auto">
+                                            🗑️ Borrar Todas
+                                        </button>
+                                        ` : ''}
+                                    </div>
                                 </div>
 
                                 <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                                    <table class="w-full">
-                                        <thead class="bg-gray-100">
-                                            <tr>
-                                                <th class="px-6 py-4 text-left font-bold">N°</th>
-                                                <th class="px-6 py-4 text-left font-bold">Código</th>
-                                                <th class="px-6 py-4 text-left font-bold">Nombres</th>
-                                                <th class="px-6 py-4 text-left font-bold">Escuela</th>
-                                                <th class="px-6 py-4 text-left font-bold">Ciclo</th>
-                                                <th class="px-6 py-4 text-left font-bold">Acción</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            ${this.signatures.length === 0 ? `
-                                                <tr><td colspan="6" class="px-6 py-12 text-center text-gray-500">
-                                                    <div class="text-5xl mb-3">📝</div>
-                                                    <p>No hay firmas registradas aún</p>
-                                                    <p class="text-sm mt-1">Agrega la primera firma arriba</p>
-                                                </td></tr>
-                                            ` : this.signatures.map((s, i) => `
-                                                <tr class="border-t hover:bg-blue-50">
-                                                    <td class="px-6 py-4">${i+1}</td>
-                                                    <td class="px-6 py-4">${s.codigo}</td>
-                                                    <td class="px-6 py-4">${s.nombre}</td>
-                                                    <td class="px-6 py-4 text-xs">${s.escuela}</td>
-                                                    <td class="px-6 py-4">${s.ciclo}</td>
-                                                    <td class="px-6 py-4">
-                                                        <button onclick="app.deleteSig(${s.id})" class="text-red-500 hover:text-red-700">🗑️</button>
-                                                    </td>
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full">
+                                            <thead class="bg-gray-100">
+                                                <tr>
+                                                    <th class="px-6 py-4 text-left font-bold text-sm">N°</th>
+                                                    <th class="px-6 py-4 text-left font-bold text-sm">CÓDIGO</th>
+                                                    <th class="px-6 py-4 text-left font-bold text-sm">APELLIDOS Y NOMBRES</th>
+                                                    <th class="px-6 py-4 text-left font-bold text-sm">ESCUELA</th>
+                                                    <th class="px-6 py-4 text-left font-bold text-sm">CICLO</th>
+                                                    <th class="px-6 py-4 text-left font-bold text-sm">ACCIÓN</th>
                                                 </tr>
-                                            `).join('')}
-                                        </tbody>
-                                    </table>
+                                            </thead>
+                                            <tbody>
+                                                ${this.signatures.length === 0 ? `
+                                                    <tr><td colspan="6" class="px-6 py-12 text-center text-gray-500">
+                                                        <div class="text-5xl mb-3">📝</div>
+                                                        <p class="text-lg font-semibold">No hay firmas registradas aún</p>
+                                                        <p class="text-sm mt-1">Agrega la primera firma usando el formulario arriba</p>
+                                                    </td></tr>
+                                                ` : this.signatures.map((s, i) => `
+                                                    <tr class="border-t hover:bg-blue-50 transition-colors">
+                                                        <td class="px-6 py-4 font-semibold">${i+1}</td>
+                                                        <td class="px-6 py-4 font-mono">${s.codigo}</td>
+                                                        <td class="px-6 py-4">${s.nombre}</td>
+                                                        <td class="px-6 py-4 text-xs">${s.escuela}</td>
+                                                        <td class="px-6 py-4 text-center">${s.ciclo}</td>
+                                                        <td class="px-6 py-4">
+                                                            <button onclick="app.deleteSig(${s.id})" class="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded transition-all" title="Eliminar">
+                                                                🗑️
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                `).join('')}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded-xl">
+                                    <h3 class="font-bold text-yellow-800 mb-2">💡 Información Importante</h3>
+                                    <ul class="text-sm text-yellow-700 space-y-1">
+                                        <li>✅ Las firmas se guardan automáticamente en tu navegador</li>
+                                        <li>✅ No se permiten códigos duplicados</li>
+                                        <li>✅ Descarga en Excel o PDF para presentación profesional</li>
+                                        <li>⚠️ Si borras el historial del navegador, se perderán las firmas guardadas</li>
+                                    </ul>
                                 </div>
                             </div>
                         `}
