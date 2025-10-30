@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Propuesta Mascota Sonic - UNASAM FIIA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div id="app"></div>
+
+    <script>
+        const app = {
+            signatures: [],
+            currentEntry: { codigo: '', nombre: '', escuela: 'Ingeniería Industrial', ciclo: '' },
+            activeTab: 'propuesta',
+            showDocument: null,
+
+            init() { this.render(); },
+
+            switchTab(tab) { this.activeTab = tab; this.render(); },
+            showDoc(doc) { this.showDocument = doc; this.render(); },
+            closeDoc() { this.showDocument = null; this.render(); },
+
+            add() {
+                this.currentEntry.codigo = document.getElementById('codigo').value;
+                this.currentEntry.nombre = document.getElementById('nombre').value;
+                this.currentEntry.escuela = document.getElementById('escuela').value;
+                this.currentEntry.ciclo = document.getElementById('ciclo').value;
+                
+                if (this.currentEntry.codigo && this.currentEntry.nombre && this.currentEntry.ciclo) {
+                    this.signatures.push({ ...this.currentEntry, id: Date.now() });
+                    this.currentEntry = { codigo: '', nombre: '', escuela: 'Ingeniería Industrial', ciclo: '' };
+                    this.render();
+                }
+            },
+
+            deleteSig(id) { this.signatures = this.signatures.filter(s => s.id !== id); this.render(); },
+
+            getProposal() {
+                const fecha = new Date().toLocaleDateString('es-PE', { year: 'numeric', month: 'long', day: 'numeric' });
+                return `PROPUESTA DE INCORPORACIÓN DE MASCOTA COMPLEMENTARIA
+ESCUELA PROFESIONAL DE INGENIERÍA INDUSTRIAL
+
+UNIVERSIDAD NACIONAL SANTIAGO ANTÚNEZ DE MAYOLO - UNASAM
+FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS
+
+Huaraz, ${fecha}
+
+SEÑOR:
+_________________________________
+DECANO DE LA FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS
+
+ASUNTO: Propuesta de incorporación de mascota "Sonic" como símbolo complementario de la Escuela Profesional de Ingeniería Industrial
+
+De nuestra consideración:
+
+Por medio de la presente, los estudiantes de la Escuela Profesional de Ingeniería Industrial nos dirigimos a usted con el debido respeto para exponer lo siguiente:
+
+I. ANTECEDENTES
+
+1.1. La Facultad de Ingeniería de Industrias Alimentarias (FIIA) cuenta con la mascota "Garfield" como símbolo representativo de toda la facultad, misma que ha generado identidad y cohesión entre ambas escuelas profesionales.
+
+1.2. La Escuela Profesional de Ingeniería Industrial, consciente de su crecimiento académico y estudiantil, busca fortalecer su identidad particular sin menoscabar la unidad facultativa existente.
+
+1.3. En otras facultades de la UNASAM y universidades nacionales, coexisten mascotas complementarias que representan a diferentes escuelas profesionales sin generar división, sino enriquecimiento cultural e identitario.
+
+II. JUSTIFICACIÓN
+
+2.1. FORTALECIMIENTO DE IDENTIDAD PROPIA
+La mascota "Sonic" representa valores inherentes a la Ingeniería Industrial: velocidad en procesos, innovación tecnológica, dinamismo y eficiencia. Estos atributos resuenan con el perfil del ingeniero industrial moderno.
+
+2.2. UNIDAD EN LA DIVERSIDAD
+La incorporación de Sonic NO busca reemplazar a Garfield ni generar separación. Al contrario, el concepto es que ambas mascotas sean "amigas" y convivan, reflejando la colaboración entre ambas escuelas profesionales dentro de una misma facultad fuerte y unida.
+
+2.3. MAYOR PARTICIPACIÓN ESTUDIANTIL
+Una mascota propia incrementará el sentido de pertenencia de los estudiantes de Ingeniería Industrial, motivando mayor participación en eventos académicos, culturales y deportivos tanto internos como interfacultativos.
+
+2.4. PROYECCIÓN Y CRECIMIENTO
+Como facultad que aspira al crecimiento y reconocimiento institucional, la diversificación de símbolos identitarios contribuye al posicionamiento de nuestras escuelas profesionales, atrayendo a futuros estudiantes.
+
+III. OBJETIVOS
+
+3.1. Incorporar a "Sonic" como mascota oficial de la Escuela Profesional de Ingeniería Industrial.
+3.2. Mantener a "Garfield" como mascota representativa de toda la FIIA.
+3.3. Promover actividades conjuntas donde ambas mascotas simbolicen la unidad facultativa.
+3.4. Fortalecer la identidad estudiantil sin fragmentar la cohesión interfacultativa.
+
+IV. RESPALDO ESTUDIANTIL
+
+4.1. La presente propuesta cuenta con el respaldo documentado de estudiantes de AMBAS escuelas profesionales (Ingeniería Industrial e Ingeniería en Industrias Alimentarias), conforme a las firmas anexas.
+
+4.2. Este apoyo transversal demuestra que la iniciativa es percibida como integradora y no divisoria por la comunidad estudiantil de la FIIA.
+
+V. COMPROMISO
+
+Los estudiantes de Ingeniería Industrial nos comprometemos a:
+- Financiar la elaboración de la botarga de Sonic con recursos propios.
+- Promover actividades donde ambas mascotas interactúen positivamente.
+- Respetar y mantener a Garfield como símbolo facultativo principal.
+- Contribuir al prestigio y unidad de la FIIA.
+
+VI. SOLICITUD
+
+Por lo expuesto, solicitamos respetuosamente se apruebe la incorporación de "Sonic" como mascota complementaria de la Escuela Profesional de Ingeniería Industrial, bajo los principios de unidad, respeto y crecimiento institucional aquí descritos.
+
+Sin otro particular, quedamos de usted.
+
+Atentamente,
+
+_______________________________
+ESTUDIANTES DE LA ESCUELA PROFESIONAL DE INGENIERÍA INDUSTRIAL
+FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM
+
+Anexo: Registro de firmas de respaldo estudiantil`;
+            },
+
+            getInfo() {
+                return `¿POR QUÉ SONIC COMO MASCOTA DE INGENIERÍA INDUSTRIAL?
+
+Estimado(a) estudiante de la FIIA:
+
+Te invitamos a conocer y apoyar esta iniciativa que busca FORTALECER nuestra facultad, NO dividirla.
+
+🔵 ¿QUÉ PROPONEMOS?
+Incorporar a SONIC como mascota de la Escuela Profesional de Ingeniería Industrial, siendo el "amigo" de Garfield, nuestra mascota facultativa.
+
+🤝 ¿SIGNIFICA SEPARARNOS?
+¡NO! Garfield seguirá siendo la mascota de TODA la FIIA. Sonic será un símbolo ADICIONAL para Industrial, conviviendo ambos en armonía.
+
+⚡ ¿POR QUÉ SONIC?
+✓ Representa velocidad → Eficiencia en procesos industriales
+✓ Representa innovación → Tecnología e ingeniería moderna
+✓ Representa dinamismo → El perfil del ingeniero industrial
+✓ Es reconocible y genera identificación estudiantil
+
+🎯 BENEFICIOS PARA LA FIIA COMPLETA:
+• Mayor participación en eventos académicos y deportivos
+• Fortalecimiento de identidad sin fragmentación
+• Actividades conjuntas entre ambas escuelas (Sonic + Garfield)
+• Atracción de nuevos estudiantes a nuestra facultad
+• Proyección institucional de la FIIA
+
+📋 ¿CÓMO PUEDES APOYAR?
+Firma en el registro estudiantil. Tu apoyo es importante sea que estudies Ingeniería Industrial o Ingeniería en Industrias Alimentarias.
+
+Esta propuesta fue presentada al señor Decano, quien aceptó siempre que cuente con respaldo estudiantil documentado. ¡Tu firma cuenta!
+
+💙 JUNTOS SOMOS MÁS FUERTES
+Sonic + Garfield = Una FIIA unida y con identidades claras
+
+---
+ESCUELA PROFESIONAL DE INGENIERÍA INDUSTRIAL
+FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
+            },
+
+            download(type, filename) {
+                let content = '';
+                if (type === 'propuesta') content = this.getProposal();
+                else if (type === 'info') content = this.getInfo();
+                else if (type === 'firmas') {
+                    const rows = [['N°', 'CÓDIGO', 'APELLIDOS Y NOMBRES', 'ESCUELA PROFESIONAL', 'CICLO', 'FIRMA'],
+                        ...this.signatures.map((s, i) => [i+1, s.codigo, s.nombre, s.escuela, s.ciclo, '_______________'])];
+                    content = rows.map(r => r.join('\\t')).join('\\n');
+                }
+                const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = filename; a.click();
+            },
+
+            stats() {
+                return {
+                    total: this.signatures.length,
+                    industrial: this.signatures.filter(s => s.escuela === 'Ingeniería Industrial').length,
+                    alimentarias: this.signatures.filter(s => s.escuela === 'Ingeniería en Industrias Alimentarias').length
+                };
+            },
+
+            render() {
+                const stats = this.stats();
+                document.getElementById('app').innerHTML = `
+                    <div class="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white shadow-2xl">
+                        <div class="max-w-7xl mx-auto px-6 py-8">
+                            <div class="flex items-center justify-between flex-wrap gap-4">
+                                <div class="flex items-center gap-6">
+                                    <div class="bg-white p-3 rounded-full shadow-lg">
+                                        <svg class="text-blue-900 w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h1 class="text-3xl font-bold">UNASAM</h1>
+                                        <p class="text-blue-200 text-sm mt-1">Universidad Nacional Santiago Antúnez de Mayolo</p>
+                                        <p class="text-blue-300 text-xs mt-1 font-semibold">Facultad de Ingeniería de Industrias Alimentarias</p>
+                                    </div>
+                                </div>
+                                <div class="text-7xl">🦔</div>
+                            </div>
+                            <div class="mt-6 pt-6 border-t border-blue-700">
+                                <h2 class="text-xl font-semibold">Propuesta de Incorporación de Mascota Sonic</h2>
+                                <p class="text-blue-200 text-sm mt-1">Escuela Profesional de Ingeniería Industrial</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="max-w-7xl mx-auto px-6 py-8">
+                        <div class="bg-white rounded-xl shadow-lg mb-8 overflow-hidden">
+                            <div class="flex border-b">
+                                <button onclick="app.switchTab('propuesta')" class="flex-1 px-6 py-4 font-semibold ${this.activeTab==='propuesta'?'bg-blue-600 text-white':'text-gray-600 hover:bg-gray-50'}">
+                                    📄 Documentos
+                                </button>
+                                <button onclick="app.switchTab('firmas')" class="flex-1 px-6 py-4 font-semibold ${this.activeTab==='firmas'?'bg-blue-600 text-white':'text-gray-600 hover:bg-gray-50'}">
+                                    ✍️ Registro de Firmas
+                                </button>
+                            </div>
+                        </div>
+
+                        ${this.activeTab === 'propuesta' ? `
+                            <div class="space-y-8">
+                                <div class="grid md:grid-cols-3 gap-6">
+                                    <button onclick="app.showDoc('propuesta')" class="bg-white p-8 rounded-xl shadow-lg hover:shadow-2xl transition-all border-2 border-blue-500">
+                                        <div class="text-center">
+                                            <div class="text-5xl mb-4">📄</div>
+                                            <h3 class="font-bold text-xl mb-2">Propuesta Formal</h3>
+                                            <p class="text-sm text-gray-600">Documento oficial para el Decanato</p>
+                                        </div>
+                                    </button>
+                                    <button onclick="app.showDoc('info')" class="bg-white p-8 rounded-xl shadow-lg hover:shadow-2xl transition-all border-2 border-green-500">
+                                        <div class="text-center">
+                                            <div class="text-5xl mb-4">📋</div>
+                                            <h3 class="font-bold text-xl mb-2">Material Informativo</h3>
+                                            <p class="text-sm text-gray-600">Para difusión estudiantil</p>
+                                        </div>
+                                    </button>
+                                    <button onclick="app.showDoc('firmas')" class="bg-white p-8 rounded-xl shadow-lg hover:shadow-2xl transition-all border-2 border-purple-500">
+                                        <div class="text-center">
+                                            <div class="text-5xl mb-4">✍️</div>
+                                            <h3 class="font-bold text-xl mb-2">Hoja de Firmas</h3>
+                                            <p class="text-sm text-gray-600">${stats.total} firmas registradas</p>
+                                        </div>
+                                    </button>
+                                </div>
+
+                                ${this.showDocument ? `
+                                    <div class="bg-white rounded-xl shadow-2xl p-8 border-t-4 border-blue-600">
+                                        <div class="flex justify-between items-center mb-6 flex-wrap gap-4">
+                                            <h3 class="font-bold text-2xl">
+                                                ${this.showDocument==='propuesta'?'📄 Propuesta Formal':''}
+                                                ${this.showDocument==='info'?'📋 Material Informativo':''}
+                                                ${this.showDocument==='firmas'?'✍️ Formato de Firmas':''}
+                                            </h3>
+                                            <div class="flex gap-3">
+                                                <button onclick="app.download('${this.showDocument}', '${this.showDocument==='propuesta'?'Propuesta_Mascota_Sonic.txt':this.showDocument==='info'?'Info_Propuesta.txt':'Firmas.csv'}')" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">
+                                                    💾 Descargar
+                                                </button>
+                                                <button onclick="app.closeDoc()" class="bg-gray-200 px-6 py-3 rounded-lg hover:bg-gray-300">Cerrar</button>
+                                            </div>
+                                        </div>
+                                        <div class="bg-gray-50 p-6 rounded-lg border max-h-96 overflow-y-auto">
+                                            <pre class="whitespace-pre-wrap text-sm font-mono">${
+                                                this.showDocument==='propuesta'?this.getProposal():
+                                                this.showDocument==='info'?this.getInfo():
+                                                [['N°','CÓDIGO','NOMBRES','ESCUELA','CICLO','FIRMA'],...this.signatures.map((s,i)=>[i+1,s.codigo,s.nombre,s.escuela,s.ciclo,'___'])].map(r=>r.join('\\t')).join('\\n')
+                                            }</pre>
+                                        </div>
+                                    </div>
+                                ` : ''}
+
+                                <div class="bg-blue-50 border-l-4 border-blue-600 p-8 rounded-xl">
+                                    <h3 class="font-bold text-lg mb-4">✅ Instrucciones de Uso</h3>
+                                    <ul class="space-y-2 text-gray-700">
+                                        <li><strong>1.</strong> Descarga la Propuesta Formal para presentar al Decano</li>
+                                        <li><strong>2.</strong> Usa el Material Informativo para explicar a estudiantes</li>
+                                        <li><strong>3.</strong> Imprime la Hoja de Firmas varias veces (necesitas ~500 firmas)</li>
+                                        <li><strong>4.</strong> Lleva control digital en la pestaña "Registro de Firmas"</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="space-y-8">
+                                <div class="grid md:grid-cols-3 gap-6">
+                                    <div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-8 rounded-xl">
+                                        <div class="text-5xl font-bold">${stats.total}</div>
+                                        <div class="text-lg">Total de Firmas</div>
+                                    </div>
+                                    <div class="bg-gradient-to-br from-green-600 to-green-700 text-white p-8 rounded-xl">
+                                        <div class="text-5xl font-bold">${stats.industrial}</div>
+                                        <div class="text-lg">Ing. Industrial</div>
+                                    </div>
+                                    <div class="bg-gradient-to-br from-purple-600 to-purple-700 text-white p-8 rounded-xl">
+                                        <div class="text-5xl font-bold">${stats.alimentarias}</div>
+                                        <div class="text-lg">Ing. Alimentarias</div>
+                                    </div>
+                                </div>
+
+                                <div class="bg-white p-8 rounded-xl shadow-lg border-t-4 border-blue-600">
+                                    <h3 class="font-bold text-2xl mb-6">Agregar Nueva Firma</h3>
+                                    <div class="grid md:grid-cols-5 gap-4 mb-4">
+                                        <input type="text" id="codigo" placeholder="Código" value="${this.currentEntry.codigo}" class="px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                                        <input type="text" id="nombre" placeholder="Apellidos y Nombres" value="${this.currentEntry.nombre}" class="md:col-span-2 px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                                        <select id="escuela" class="px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                                            <option ${this.currentEntry.escuela==='Ingeniería Industrial'?'selected':''}>Ingeniería Industrial</option>
+                                            <option ${this.currentEntry.escuela==='Ingeniería en Industrias Alimentarias'?'selected':''}>Ingeniería en Industrias Alimentarias</option>
+                                        </select>
+                                        <input type="text" id="ciclo" placeholder="Ciclo" value="${this.currentEntry.ciclo}" class="px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                                    </div>
+                                    <button onclick="app.add()" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-semibold">
+                                        ➕ Agregar Firma
+                                    </button>
+                                </div>
+
+                                <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                                    <table class="w-full">
+                                        <thead class="bg-gray-100">
+                                            <tr>
+                                                <th class="px-6 py-4 text-left font-bold">N°</th>
+                                                <th class="px-6 py-4 text-left font-bold">Código</th>
+                                                <th class="px-6 py-4 text-left font-bold">Nombres</th>
+                                                <th class="px-6 py-4 text-left font-bold">Escuela</th>
+                                                <th class="px-6 py-4 text-left font-bold">Ciclo</th>
+                                                <th class="px-6 py-4 text-left font-bold">Acción</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${this.signatures.length === 0 ? `
+                                                <tr><td colspan="6" class="px-6 py-12 text-center text-gray-500">
+                                                    <div class="text-5xl mb-3">📝</div>
+                                                    <p>No hay firmas registradas aún</p>
+                                                    <p class="text-sm mt-1">Agrega la primera firma arriba</p>
+                                                </td></tr>
+                                            ` : this.signatures.map((s, i) => `
+                                                <tr class="border-t hover:bg-blue-50">
+                                                    <td class="px-6 py-4">${i+1}</td>
+                                                    <td class="px-6 py-4">${s.codigo}</td>
+                                                    <td class="px-6 py-4">${s.nombre}</td>
+                                                    <td class="px-6 py-4 text-xs">${s.escuela}</td>
+                                                    <td class="px-6 py-4">${s.ciclo}</td>
+                                                    <td class="px-6 py-4">
+                                                        <button onclick="app.deleteSig(${s.id})" class="text-red-500 hover:text-red-700">🗑️</button>
+                                                    </td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        `}
+
+                        <div class="mt-12 text-center text-gray-600 text-sm pb-8">
+                            <p>© 2024 Universidad Nacional Santiago Antúnez de Mayolo - UNASAM</p>
+                            <p class="mt-1">Facultad de Ingeniería de Industrias Alimentarias</p>
+                        </div>
+                    </div>
+                `;
+            }
+        };
+
+        app.init();
+    </script>
+</body>
+</html>
