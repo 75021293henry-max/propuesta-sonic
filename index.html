@@ -11,52 +11,37 @@
 </head>
 <body class="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
     <div id="app"></div>
+
     <script>
         const app = {
             signatures: [],
             currentEntry: { codigo: '', nombre: '', escuela: 'Ingeniería Industrial', ciclo: '' },
             activeTab: 'propuesta',
             showDocument: null,
-            isLoading: false,
 
-            async init() { 
-                await this.loadSignatures();
+            init() { 
+                this.loadSignatures();
                 this.render(); 
             },
 
-            async loadSignatures() {
-                this.isLoading = true;
-                this.render();
-                try {
-                    const result = await window.storage.get('sonic_firmas_compartidas', true);
-                    if (result && result.value) {
-                        this.signatures = JSON.parse(result.value);
-                    }
-                } catch (error) {
-                    console.log('Iniciando registro nuevo');
-                    this.signatures = [];
+            // Cargar firmas guardadas del navegador
+            loadSignatures() {
+                const saved = localStorage.getItem('sonic_firmas');
+                if (saved) {
+                    this.signatures = JSON.parse(saved);
                 }
-                this.isLoading = false;
-                this.render();
             },
 
-            async saveSignatures() {
-                try {
-                    const result = await window.storage.set('sonic_firmas_compartidas', JSON.stringify(this.signatures), true);
-                    if (!result) throw new Error('Error al guardar');
-                    return true;
-                } catch (error) {
-                    console.error('Error:', error);
-                    alert('⚠️ Error al guardar. Intenta de nuevo.');
-                    return false;
-                }
+            // Guardar firmas en el navegador
+            saveSignatures() {
+                localStorage.setItem('sonic_firmas', JSON.stringify(this.signatures));
             },
 
             switchTab(tab) { this.activeTab = tab; this.render(); },
             showDoc(doc) { this.showDocument = doc; this.render(); },
             closeDoc() { this.showDocument = null; this.render(); },
 
-            async add() {
+            add() {
                 this.currentEntry.codigo = document.getElementById('codigo').value.trim();
                 this.currentEntry.nombre = document.getElementById('nombre').value.trim();
                 this.currentEntry.escuela = document.getElementById('escuela').value;
@@ -67,7 +52,7 @@
                     return;
                 }
 
-                await this.loadSignatures();
+                // Validar código duplicado
                 const existe = this.signatures.find(s => s.codigo === this.currentEntry.codigo);
                 if (existe) {
                     alert('⚠️ Este código ya está registrado: ' + this.currentEntry.codigo);
@@ -75,35 +60,27 @@
                 }
 
                 this.signatures.push({ ...this.currentEntry, id: Date.now() });
-                const saved = await this.saveSignatures();
-                
-                if (saved) {
-                    this.currentEntry = { codigo: '', nombre: '', escuela: 'Ingeniería Industrial', ciclo: '' };
-                    this.render();
-                    alert('✅ Firma agregada y guardada para todos');
-                }
+                this.saveSignatures();
+                this.currentEntry = { codigo: '', nombre: '', escuela: 'Ingeniería Industrial', ciclo: '' };
+                this.render();
+                alert('✅ Firma agregada correctamente');
             },
 
-            async deleteSig(id) { 
-                if (confirm('¿Eliminar esta firma?')) {
+            deleteSig(id) { 
+                if (confirm('¿Estás seguro de eliminar esta firma?')) {
                     this.signatures = this.signatures.filter(s => s.id !== id); 
-                    await this.saveSignatures();
+                    this.saveSignatures();
                     this.render(); 
                 }
             },
 
-            async clearAll() {
-                if (confirm('⚠️ ¿Borrar TODAS las firmas? Esto afectará a TODOS los usuarios.')) {
+            clearAll() {
+                if (confirm('⚠️ ¿Estás seguro de borrar TODAS las firmas? Esta acción no se puede deshacer.')) {
                     this.signatures = [];
-                    await this.saveSignatures();
+                    this.saveSignatures();
                     this.render();
-                    alert('✅ Todas las firmas eliminadas');
+                    alert('✅ Todas las firmas han sido eliminadas');
                 }
-            },
-
-            async refreshData() {
-                await this.loadSignatures();
-                alert('✅ Datos actualizados');
             },
 
             getProposal() {
@@ -224,8 +201,15 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
             },
 
             downloadTxt(type) {
-                const content = type === 'propuesta' ? this.getProposal() : this.getInfo();
-                const filename = type === 'propuesta' ? 'Propuesta_Mascota_Sonic.txt' : 'Info_Propuesta_Sonic.txt';
+                let content = '';
+                let filename = '';
+                if (type === 'propuesta') {
+                    content = this.getProposal();
+                    filename = 'Propuesta_Mascota_Sonic.txt';
+                } else if (type === 'info') {
+                    content = this.getInfo();
+                    filename = 'Info_Propuesta_Sonic.txt';
+                }
                 const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -237,10 +221,28 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
             downloadExcel() {
                 const data = [
                     ['N°', 'CÓDIGO', 'APELLIDOS Y NOMBRES', 'ESCUELA PROFESIONAL', 'CICLO', 'FIRMA'],
-                    ...this.signatures.map((s, i) => [i + 1, s.codigo, s.nombre, s.escuela, s.ciclo, '_______________'])
+                    ...this.signatures.map((s, i) => [
+                        i + 1, 
+                        s.codigo, 
+                        s.nombre, 
+                        s.escuela, 
+                        s.ciclo, 
+                        '_______________'
+                    ])
                 ];
+
                 const ws = XLSX.utils.aoa_to_sheet(data);
-                ws['!cols'] = [{wch: 5}, {wch: 12}, {wch: 40}, {wch: 35}, {wch: 8}, {wch: 20}];
+                
+                // Ajustar ancho de columnas
+                ws['!cols'] = [
+                    {wch: 5},  // N°
+                    {wch: 12}, // CÓDIGO
+                    {wch: 40}, // NOMBRES
+                    {wch: 35}, // ESCUELA
+                    {wch: 8},  // CICLO
+                    {wch: 20}  // FIRMA
+                ];
+
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, "Firmas");
                 XLSX.writeFile(wb, `Registro_Firmas_Sonic_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -249,11 +251,23 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
             downloadPDF() {
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF('landscape');
+                
+                // Título
                 doc.setFontSize(16);
                 doc.text('REGISTRO DE FIRMAS - PROPUESTA MASCOTA SONIC', 15, 15);
                 doc.setFontSize(10);
                 doc.text('Escuela Profesional de Ingeniería Industrial - FIIA UNASAM', 15, 22);
-                const tableData = this.signatures.map((s, i) => [i + 1, s.codigo, s.nombre, s.escuela, s.ciclo, '_______________']);
+                
+                // Tabla
+                const tableData = this.signatures.map((s, i) => [
+                    i + 1,
+                    s.codigo,
+                    s.nombre,
+                    s.escuela,
+                    s.ciclo,
+                    '_______________'
+                ]);
+
                 doc.autoTable({
                     startY: 28,
                     head: [['N°', 'CÓDIGO', 'APELLIDOS Y NOMBRES', 'ESCUELA PROFESIONAL', 'CICLO', 'FIRMA']],
@@ -261,8 +275,16 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
                     theme: 'grid',
                     styles: { fontSize: 9, cellPadding: 3 },
                     headStyles: { fillColor: [37, 99, 235], textColor: 255 },
-                    columnStyles: {0: {cellWidth: 15}, 1: {cellWidth: 30}, 2: {cellWidth: 70}, 3: {cellWidth: 60}, 4: {cellWidth: 20}, 5: {cellWidth: 40}}
+                    columnStyles: {
+                        0: { cellWidth: 15 },
+                        1: { cellWidth: 30 },
+                        2: { cellWidth: 70 },
+                        3: { cellWidth: 60 },
+                        4: { cellWidth: 20 },
+                        5: { cellWidth: 40 }
+                    }
                 });
+
                 doc.save(`Registro_Firmas_Sonic_${new Date().toISOString().split('T')[0]}.pdf`);
             },
 
@@ -277,14 +299,218 @@ FACULTAD DE INGENIERÍA DE INDUSTRIAS ALIMENTARIAS - UNASAM`;
             render() {
                 const stats = this.stats();
                 document.getElementById('app').innerHTML = `
-                    ${this.isLoading ? `<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"><div class="bg-white p-8 rounded-xl shadow-2xl text-center"><div class="text-6xl mb-4 animate-bounce">🦔</div><div class="text-xl font-bold">Cargando firmas compartidas...</div></div></div>` : ''}
-                    <div class="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white shadow-2xl"><div class="max-w-7xl mx-auto px-6 py-8"><div class="flex items-center justify-between flex-wrap gap-4"><div class="flex items-center gap-6"><div class="bg-white p-3 rounded-full shadow-lg"><svg class="text-blue-900 w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg></div><div><h1 class="text-3xl font-bold">UNASAM</h1><p class="text-blue-200 text-sm mt-1">Universidad Nacional Santiago Antúnez de Mayolo</p><p class="text-blue-300 text-xs mt-1 font-semibold">Facultad de Ingeniería de Industrias Alimentarias</p></div></div><div class="text-7xl">🦔</div></div><div class="mt-6 pt-6 border-t border-blue-700"><h2 class="text-xl font-semibold">Propuesta de Incorporación de Mascota Sonic</h2><p class="text-blue-200 text-sm mt-1">Escuela Profesional de Ingeniería Industrial</p></div></div></div>
-                    <div class="max-w-7xl mx-auto px-6 py-8"><div class="bg-white rounded-xl shadow-lg mb-8 overflow-hidden"><div class="flex border-b"><button onclick="app.switchTab('propuesta')" class="flex-1 px-6 py-4 font-semibold ${this.activeTab==='propuesta'?'bg-blue-600 text-white':'text-gray-600 hover:bg-gray-50'}">📄 Documentos</button><button onclick="app.switchTab('firmas')" class="flex-1 px-6 py-4 font-semibold ${this.activeTab==='firmas'?'bg-blue-600 text-white':'text-gray-600 hover:bg-gray-50'}">✍️ Registro de Firmas (${stats.total})</button></div></div>
-                    ${this.activeTab === 'propuesta' ? `<div class="space-y-8"><div class="grid md:grid-cols-3 gap-6"><button onclick="app.showDoc('propuesta')" class="bg-white p-8 rounded-xl shadow-lg hover:shadow-2xl transition-all border-2 border-blue-500"><div class="text-center"><div class="text-5xl mb-4">📄</div><h3 class="font-bold text-xl mb-2">Propuesta Formal</h3><p class="text-sm text-gray-600">Documento oficial para el Decanato</p></div></button><button onclick="app.showDoc('info')" class="bg-white p-8 rounded-xl shadow-lg hover:shadow-2xl transition-all border-2 border-green-500"><div class="text-center"><div class="text-5xl mb-4">📋</div><h3 class="font-bold text-xl mb-2">Material Informativo</h3><p class="text-sm text-gray-600">Para difusión estudiantil</p></div></button><button onclick="app.showDoc('firmas')" class="bg-white p-8 rounded-xl shadow-lg hover:shadow-2xl transition-all border-2 border-purple-500"><div class="text-center"><div class="text-5xl mb-4">✍️</div><h3 class="font-bold text-xl mb-2">Hoja de Firmas</h3><p class="text-sm text-gray-600">${stats.total} firmas registradas</p></div></button></div>${this.showDocument ? `<div class="bg-white rounded-xl shadow-2xl p-8 border-t-4 border-blue-600"><div class="flex justify-between items-center mb-6 flex-wrap gap-4"><h3 class="font-bold text-2xl">${this.showDocument==='propuesta'?'📄 Propuesta Formal':this.showDocument==='info'?'📋 Material Informativo':'✍️ Formato de Firmas'}</h3><div class="flex gap-3 flex-wrap">${this.showDocument !== 'firmas' ? `<button onclick="app.downloadTxt('${this.showDocument}')" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">💾 Descargar TXT</button>` : `<button onclick="app.downloadExcel()" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700">📊 Excel</button><button onclick="app.downloadPDF()" class="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700">📄 PDF</button>`}<button onclick="app.closeDoc()" class="bg-gray-200 px-6 py-3 rounded-lg hover:bg-gray-300">Cerrar</button></div></div><div class="bg-gray-50 p-6 rounded-lg border max-h-96 overflow-y-auto"><pre class="whitespace-pre-wrap text-sm font-mono">${this.showDocument==='propuesta'?this.getProposal():this.showDocument==='info'?this.getInfo():'Vista previa. Usa Excel o PDF.'}</pre></div></div>` : ''}<div class="bg-blue-50 border-l-4 border-blue-600 p-8 rounded-xl"><h3 class="font-bold text-lg mb-4">✅ Instrucciones de Uso</h3><ul class="space-y-2 text-gray-700"><li><strong>1.</strong> Descarga la Propuesta Formal para presentar al Decano</li><li><strong>2.</strong> Usa el Material Informativo para explicar a estudiantes</li><li><strong>3.</strong> Descarga las firmas en Excel o PDF</li><li><strong>4.</strong> Las firmas se guardan en la nube y son compartidas</li></ul></div></div>` : `<div class="space-y-8"><div class="grid md:grid-cols-3 gap-6"><div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-8 rounded-xl shadow-lg"><div class="text-5xl font-bold">${stats.total}</div><div class="text-lg mt-2">Total de Firmas</div></div><div class="bg-gradient-to-br from-green-600 to-green-700 text-white p-8 rounded-xl shadow-lg"><div class="text-5xl font-bold">${stats.industrial}</div><div class="text-lg mt-2">Ing. Industrial</div></div><div class="bg-gradient-to-br from-purple-600 to-purple-700 text-white p-8 rounded-xl shadow-lg"><div class="text-5xl font-bold">${stats.alimentarias}</div><div class="text-lg mt-2">Ing. Alimentarias</div></div></div><div class="bg-white p-8 rounded-xl shadow-lg border-t-4 border-blue-600"><h3 class="font-bold text-2xl mb-6">Agregar Nueva Firma</h3><div class="grid md:grid-cols-5 gap-4 mb-4"><input type="text" id="codigo" placeholder="Código" value="${this.currentEntry.codigo}" class="px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"><input type="text" id="nombre" placeholder="Apellidos y Nombres" value="${this.currentEntry.nombre}" class="md:col-span-2 px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"><select id="escuela" class="px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"><option ${this.currentEntry.escuela==='Ingeniería Industrial'?'selected':''}>Ingeniería Industrial</option><option ${this.currentEntry.escuela==='Ingeniería en Industrias Alimentarias'?'selected':''}>Ingeniería en Industrias Alimentarias</option></select><input type="text" id="ciclo" placeholder="Ciclo" value="${this.currentEntry.ciclo}" class="px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"></div><div class="flex gap-3 flex-wrap"><button onclick="app.add()" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-semibold">➕ Agregar Firma</button><button onclick="app.refreshData()" class="bg-indigo-600 text-white px-8 py-3 rounded-lg hover:bg-indigo-700 font-semibold">🔄 Actualizar Datos</button><button onclick="app.downloadExcel()" class="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 font-semibold">📊 Descargar Excel</button><button onclick="app.downloadPDF()" class="bg-red-600 text-white px-8 py-3 rounded-lg hover:bg-red-700 font-semibold">📄 Descargar PDF</button>${stats.total > 0 ? `<button onclick="app.clearAll()" class="bg-red-500 text-white px-8 py-3 rounded-lg hover:bg-red-600 font-semibold ml-auto">🗑️ Borrar Todas</button>` : ''}</div></div><div class="bg-white rounded-xl shadow-lg overflow-hidden"><div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-100"><tr><th class="px-6 py-4 text-left font-bold text-sm">N°</th><th class="px-6 py-4 text-left font-bold text-sm">CÓDIGO</th><th class="px-6 py-4 text-left font-bold text-sm">APELLIDOS Y NOMBRES</th><th class="px-6 py-4 text-left font-bold text-sm">ESCUELA</th><th class="px-6 py-4 text-left font-bold text-sm">CICLO</th><th class="px-6 py-4 text-left font-bold text-sm">ACCIÓN</th></tr></thead><tbody>${this.signatures.length === 0 ? `<tr><td colspan="6" class="px-6 py-12 text-center text-gray-500"><div class="text-5xl mb-3">📝</div><p class="text-lg font-semibold">No hay firmas registradas</p><p class="text-sm mt-1">Agrega la primera firma arriba</p></td></tr>` : this.signatures.map((s, i) => `<tr class="border-t hover:bg-blue-50 transition-colors"><td class="px-6 py-4 font-semibold">${i+1}</td><td class="px-6 py-4 font-mono">${s.codigo}</td><td class="px-6 py-4">${s.nombre}</td><td class="px-6 py-4 text-xs">${s.escuela}</td><td class="px-6 py-4 text-center">${s.ciclo}</td><td class="px-6 py-4"><button onclick="app.deleteSig(${s.id})" class="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded transition-all">🗑️</button></td></tr>`).join('')}</tbody></table></div></div><div class="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded-xl"><h3 class="font-bold text-yellow-800 mb-2">💡 Información Importante</h3><ul class="text-sm text-yellow-700 space-y-1"><li>✅ Las firmas se guardan en la nube para TODOS</li><li>✅ No se permiten códigos duplicados</li><li>✅ Presiona "🔄 Actualizar" para ver firmas recientes</li><li>✅ Descarga en Excel o PDF para presentación</li><li>🌐 Cualquier estudiante puede firmar desde cualquier dispositivo</li></ul></div></div>`}
-                    <div class="mt-12 text-center text-gray-600 text-sm pb-8"><p>© 2024 Universidad Nacional Santiago Antúnez de Mayolo - UNASAM</p><p class="mt-1">Facultad de Ingeniería de Industrias Alimentarias</p></div></div>
+                    <div class="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white shadow-2xl">
+                        <div class="max-w-7xl mx-auto px-6 py-8">
+                            <div class="flex items-center justify-between flex-wrap gap-4">
+                                <div class="flex items-center gap-6">
+                                    <div class="bg-white p-3 rounded-full shadow-lg">
+                                        <svg class="text-blue-900 w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h1 class="text-3xl font-bold">UNASAM</h1>
+                                        <p class="text-blue-200 text-sm mt-1">Universidad Nacional Santiago Antúnez de Mayolo</p>
+                                        <p class="text-blue-300 text-xs mt-1 font-semibold">Facultad de Ingeniería de Industrias Alimentarias</p>
+                                    </div>
+                                </div>
+                                <div class="text-7xl">🦔</div>
+                            </div>
+                            <div class="mt-6 pt-6 border-t border-blue-700">
+                                <h2 class="text-xl font-semibold">Propuesta de Incorporación de Mascota Sonic</h2>
+                                <p class="text-blue-200 text-sm mt-1">Escuela Profesional de Ingeniería Industrial</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="max-w-7xl mx-auto px-6 py-8">
+                        <div class="bg-white rounded-xl shadow-lg mb-8 overflow-hidden">
+                            <div class="flex border-b">
+                                <button onclick="app.switchTab('propuesta')" class="flex-1 px-6 py-4 font-semibold ${this.activeTab==='propuesta'?'bg-blue-600 text-white':'text-gray-600 hover:bg-gray-50'}">
+                                    📄 Documentos
+                                </button>
+                                <button onclick="app.switchTab('firmas')" class="flex-1 px-6 py-4 font-semibold ${this.activeTab==='firmas'?'bg-blue-600 text-white':'text-gray-600 hover:bg-gray-50'}">
+                                    ✍️ Registro de Firmas (${stats.total})
+                                </button>
+                            </div>
+                        </div>
+
+                        ${this.activeTab === 'propuesta' ? `
+                            <div class="space-y-8">
+                                <div class="grid md:grid-cols-3 gap-6">
+                                    <button onclick="app.showDoc('propuesta')" class="bg-white p-8 rounded-xl shadow-lg hover:shadow-2xl transition-all border-2 border-blue-500">
+                                        <div class="text-center">
+                                            <div class="text-5xl mb-4">📄</div>
+                                            <h3 class="font-bold text-xl mb-2">Propuesta Formal</h3>
+                                            <p class="text-sm text-gray-600">Documento oficial para el Decanato</p>
+                                        </div>
+                                    </button>
+                                    <button onclick="app.showDoc('info')" class="bg-white p-8 rounded-xl shadow-lg hover:shadow-2xl transition-all border-2 border-green-500">
+                                        <div class="text-center">
+                                            <div class="text-5xl mb-4">📋</div>
+                                            <h3 class="font-bold text-xl mb-2">Material Informativo</h3>
+                                            <p class="text-sm text-gray-600">Para difusión estudiantil</p>
+                                        </div>
+                                    </button>
+                                    <button onclick="app.showDoc('firmas')" class="bg-white p-8 rounded-xl shadow-lg hover:shadow-2xl transition-all border-2 border-purple-500">
+                                        <div class="text-center">
+                                            <div class="text-5xl mb-4">✍️</div>
+                                            <h3 class="font-bold text-xl mb-2">Hoja de Firmas</h3>
+                                            <p class="text-sm text-gray-600">${stats.total} firmas registradas</p>
+                                        </div>
+                                    </button>
+                                </div>
+
+                                ${this.showDocument ? `
+                                    <div class="bg-white rounded-xl shadow-2xl p-8 border-t-4 border-blue-600">
+                                        <div class="flex justify-between items-center mb-6 flex-wrap gap-4">
+                                            <h3 class="font-bold text-2xl">
+                                                ${this.showDocument==='propuesta'?'📄 Propuesta Formal':''}
+                                                ${this.showDocument==='info'?'📋 Material Informativo':''}
+                                                ${this.showDocument==='firmas'?'✍️ Formato de Firmas':''}
+                                            </h3>
+                                            <div class="flex gap-3 flex-wrap">
+                                                ${this.showDocument !== 'firmas' ? `
+                                                    <button onclick="app.downloadTxt('${this.showDocument}')" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">
+                                                        💾 Descargar TXT
+                                                    </button>
+                                                ` : `
+                                                    <button onclick="app.downloadExcel()" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700">
+                                                        📊 Excel
+                                                    </button>
+                                                    <button onclick="app.downloadPDF()" class="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700">
+                                                        📄 PDF
+                                                    </button>
+                                                `}
+                                                <button onclick="app.closeDoc()" class="bg-gray-200 px-6 py-3 rounded-lg hover:bg-gray-300">Cerrar</button>
+                                            </div>
+                                        </div>
+                                        <div class="bg-gray-50 p-6 rounded-lg border max-h-96 overflow-y-auto">
+                                            <pre class="whitespace-pre-wrap text-sm font-mono">${
+                                                this.showDocument==='propuesta'?this.getProposal():
+                                                this.showDocument==='info'?this.getInfo():
+                                                'Vista previa de formato de firmas. Usa los botones Excel o PDF para descargar.'
+                                            }</pre>
+                                        </div>
+                                    </div>
+                                ` : ''}
+
+                                <div class="bg-blue-50 border-l-4 border-blue-600 p-8 rounded-xl">
+                                    <h3 class="font-bold text-lg mb-4">✅ Instrucciones de Uso</h3>
+                                    <ul class="space-y-2 text-gray-700">
+                                        <li><strong>1.</strong> Descarga la Propuesta Formal para presentar al Decano</li>
+                                        <li><strong>2.</strong> Usa el Material Informativo para explicar a estudiantes</li>
+                                        <li><strong>3.</strong> Descarga las firmas en Excel o PDF (formato profesional)</li>
+                                        <li><strong>4.</strong> Las firmas se guardan automáticamente en tu navegador</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="space-y-8">
+                                <div class="grid md:grid-cols-3 gap-6">
+                                    <div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-8 rounded-xl shadow-lg">
+                                        <div class="text-5xl font-bold">${stats.total}</div>
+                                        <div class="text-lg mt-2">Total de Firmas</div>
+                                    </div>
+                                    <div class="bg-gradient-to-br from-green-600 to-green-700 text-white p-8 rounded-xl shadow-lg">
+                                        <div class="text-5xl font-bold">${stats.industrial}</div>
+                                        <div class="text-lg mt-2">Ing. Industrial</div>
+                                    </div>
+                                    <div class="bg-gradient-to-br from-purple-600 to-purple-700 text-white p-8 rounded-xl shadow-lg">
+                                        <div class="text-5xl font-bold">${stats.alimentarias}</div>
+                                        <div class="text-lg mt-2">Ing. Alimentarias</div>
+                                    </div>
+                                </div>
+
+                                <div class="bg-white p-8 rounded-xl shadow-lg border-t-4 border-blue-600">
+                                    <h3 class="font-bold text-2xl mb-6">Agregar Nueva Firma</h3>
+                                    <div class="grid md:grid-cols-5 gap-4 mb-4">
+                                        <input type="text" id="codigo" placeholder="Código" value="${this.currentEntry.codigo}" class="px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                                        <input type="text" id="nombre" placeholder="Apellidos y Nombres" value="${this.currentEntry.nombre}" class="md:col-span-2 px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                                        <select id="escuela" class="px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                                            <option ${this.currentEntry.escuela==='Ingeniería Industrial'?'selected':''}>Ingeniería Industrial</option>
+                                            <option ${this.currentEntry.escuela==='Ingeniería en Industrias Alimentarias'?'selected':''}>Ingeniería en Industrias Alimentarias</option>
+                                        </select>
+                                        <input type="text" id="ciclo" placeholder="Ciclo" value="${this.currentEntry.ciclo}" class="px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                                    </div>
+                                    <div class="flex gap-3 flex-wrap">
+                                        <button onclick="app.add()" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-semibold">
+                                            ➕ Agregar Firma
+                                        </button>
+                                        <button onclick="app.downloadExcel()" class="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 font-semibold">
+                                            📊 Descargar Excel
+                                        </button>
+                                        <button onclick="app.downloadPDF()" class="bg-red-600 text-white px-8 py-3 rounded-lg hover:bg-red-700 font-semibold">
+                                            📄 Descargar PDF
+                                        </button>
+                                        ${stats.total > 0 ? `
+                                        <button onclick="app.clearAll()" class="bg-red-500 text-white px-8 py-3 rounded-lg hover:bg-red-600 font-semibold ml-auto">
+                                            🗑️ Borrar Todas
+                                        </button>
+                                        ` : ''}
+                                    </div>
+                                </div>
+
+                                <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full">
+                                            <thead class="bg-gray-100">
+                                                <tr>
+                                                    <th class="px-6 py-4 text-left font-bold text-sm">N°</th>
+                                                    <th class="px-6 py-4 text-left font-bold text-sm">CÓDIGO</th>
+                                                    <th class="px-6 py-4 text-left font-bold text-sm">APELLIDOS Y NOMBRES</th>
+                                                    <th class="px-6 py-4 text-left font-bold text-sm">ESCUELA</th>
+                                                    <th class="px-6 py-4 text-left font-bold text-sm">CICLO</th>
+                                                    <th class="px-6 py-4 text-left font-bold text-sm">ACCIÓN</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                ${this.signatures.length === 0 ? `
+                                                    <tr><td colspan="6" class="px-6 py-12 text-center text-gray-500">
+                                                        <div class="text-5xl mb-3">📝</div>
+                                                        <p class="text-lg font-semibold">No hay firmas registradas aún</p>
+                                                        <p class="text-sm mt-1">Agrega la primera firma usando el formulario arriba</p>
+                                                    </td></tr>
+                                                ` : this.signatures.map((s, i) => `
+                                                    <tr class="border-t hover:bg-blue-50 transition-colors">
+                                                        <td class="px-6 py-4 font-semibold">${i+1}</td>
+                                                        <td class="px-6 py-4 font-mono">${s.codigo}</td>
+                                                        <td class="px-6 py-4">${s.nombre}</td>
+                                                        <td class="px-6 py-4 text-xs">${s.escuela}</td>
+                                                        <td class="px-6 py-4 text-center">${s.ciclo}</td>
+                                                        <td class="px-6 py-4">
+                                                            <button onclick="app.deleteSig(${s.id})" class="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded transition-all" title="Eliminar">
+                                                                🗑️
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                `).join('')}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded-xl">
+                                    <h3 class="font-bold text-yellow-800 mb-2">💡 Información Importante</h3>
+                                    <ul class="text-sm text-yellow-700 space-y-1">
+                                        <li>✅ Las firmas se guardan automáticamente en tu navegador</li>
+                                        <li>✅ No se permiten códigos duplicados</li>
+                                        <li>✅ Descarga en Excel o PDF para presentación profesional</li>
+                                        <li>⚠️ Si borras el historial del navegador, se perderán las firmas guardadas</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        `}
+
+                        <div class="mt-12 text-center text-gray-600 text-sm pb-8">
+                            <p>© 2024 Universidad Nacional Santiago Antúnez de Mayolo - UNASAM</p>
+                            <p class="mt-1">Facultad de Ingeniería de Industrias Alimentarias</p>
+                        </div>
+                    </div>
                 `;
             }
         };
+
         app.init();
     </script>
 </body>
